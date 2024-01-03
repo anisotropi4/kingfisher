@@ -1,3 +1,5 @@
-pyogrio >= 0.7.2
 geopandas >= 0.14.1
+networkx >= 3.2.1
+osmnx >= 1.8.1
 matplotlib >= 3.8.2
+pyogrio >= 0.7.2
