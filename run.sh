@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -x
 
 if [ ! -d venv ]; then
     python3 -m venv venv
@@ -30,6 +31,13 @@ echo get ODM data
 FILE=ODM-2021-22-ALL-journeys-slim.gpkg
 if [ ! -s data/${FILE} ]; then
     curl -o data/${FILE} -L https://automaticknowledge.org/flowdata/${FILE}
+fi
+
+echo get network data
+FILE=network-model.gpkg
+URL=https://github.com/openraildata/network-rail-gis/releases/download/20230317-01/
+if [ ! -s data/${FILE} ]; then
+    curl -o data/${FILE} -L "${URL}/${FILE}?raw=true"
 fi
 
 echo process ODM data

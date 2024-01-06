@@ -3,11 +3,14 @@
 
 import os
 
+import geopandas as gp
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from pyogrio import read_dataframe, write_dataframe
 from pyogrio.errors import DataSourceError
+from shapely import unary_union
+from shapely.geometry import Polygon
 
 pd.set_option("display.max_columns", None)
 CRS = "EPSG:27700"
@@ -81,16 +84,16 @@ def main():
     for filename in sorted(os.listdir("output")):
         crs = filename.replace(".gpkg", "")
         filepath = f"image/{crs[0]}/{crs}-rail.png"
-        if os.path.isfile(filepath):
-            print(f"{crs} found")
-            continue
+        #if os.path.isfile(filepath):
+        #    print(f"{crs} found")
+        #    continue
         try:
             gf = read_dataframe(f"output/{filename}", layer=crs)
         except DataSourceError:
             print(f"ERROR: {crs}")
             continue
         if (gf.type != "LineString").all():
-            continue
+            continue        
         print(crs)
         fig, ax = plt.subplots(dpi=300.0, layout="constrained")
         fig.set_figheight(8.0)

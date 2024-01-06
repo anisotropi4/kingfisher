@@ -14,8 +14,8 @@ import pandas as pd
 import requests
 from pyogrio import read_dataframe, write_dataframe
 from pyogrio.errors import DataLayerError, DataSourceError
-from shapely import distance, get_coordinates, line_merge, set_precision, snap
-from shapely.geometry import MultiLineString, Point
+from shapely import STRtree, distance, get_coordinates, line_merge, snap
+from shapely.geometry import LineString, MultiLineString, Point
 from shapely.ops import nearest_points, split
 
 # lookup = {
@@ -99,14 +99,14 @@ def get_crs(corpus_model):
     return r
 
 
-def get_osmnx_lookup(name_list):
+def get_osmnx_lookup(name_list, tags={"railway": "station"}):
     """get_osmnx_lookup:
     :param
       name_list
     """
     data = []
     for i in name_list:
-        j = ox.features.features_from_address(i, tags={"railway": "station"})
+        j = ox.features.features_from_address(i, tags=tags)
         data.append(j)
     r = pd.concat(data).reset_index()
     return r.to_crs(CRS)
@@ -180,7 +180,7 @@ def get_source_target(line):
 
     :param line: LineString GeoDataFrame
     :returns: GeoDataFrames
-    :rtype: edge, node
+        edge, node
 
     """
     edge = line.copy()
@@ -222,29 +222,38 @@ def split_network(network_model, point):
     return r
 
 
-def set_network_model():
-    """ """
-    try:
-        network_model = read_dataframe(OUTPATH, layer="NetworkLinks")
-    except (DataSourceError, DataLayerError):
-        URI = (
-            """https://github.com/openraildata/network-rail-gis/releases/"""
-            """download/20230711-01/network-model.gpkg?raw=true"""
-        )
-        network_model = read_dataframe(URI, layer="NetworkLinks")
-        write_dataframe(network_model, OUTPATH, layer="NetworkLinks")
-    network_model = network_model.to_crs("EPSG:27700")
-    return combine_line(network_model["geometry"])
+def get_ryde_portsmouth_wightlink(network_model):
+    tags = {"name": "Wightlink: Ryde - Portsmouth Fastcat (passenger)"}
+    r = ox.features.features_from_place("Portsmouth", tags=tags)
+    r = r["geometry"].to_crs(CRS).reset_index(drop=True)
+    i, _ = STRtree(r).query(network_model["geometry"], predicate="dwithin", distance=85)
+    point = nearest_points(r.values, network_model["geometry"].iloc[i].values)
+    s = gp.GeoSeries([LineString(k) for k in zip(*point)], crs=CRS)
+    r = pd.concat([r, s]).reset_index(drop=True)
+    return r
 
 
-def set_simple_model():
-    """ """
+def set_simple_model(rhye_fix=True):
+    """set_simple_model"""
     try:
         r = read_dataframe(OUTPATH, layer="simple_model")
         return r["geometry"]
     except (DataSourceError, DataLayerError):
-        r = set_network_model()
-        write_dataframe(r.to_frame("geometry"), OUTPATH, layer="simple_model")
+        try:
+            network_model = read_dataframe(OUTPATH, layer="network-model")
+        except (DataSourceError, DataLayerError):
+            network_model = read_dataframe(
+                "data/network-model.gpkg", layer="network-model"
+            )
+            network_model = network_model.to_crs("EPSG:27700")
+            write_dataframe(network_model, OUTPATH, layer="network-model")
+    if rhye_fix:
+        r = get_ryde_portsmouth_wightlink(network_model)
+        r = pd.concat([network_model["geometry"], r])
+    else:
+        r = network_model["geometry"]
+    r = combine_line(r)
+    write_dataframe(r.to_frame("geometry"), OUTPATH, layer="simple_model")
     return r
 
 
@@ -646,6 +655,9 @@ def fn_crs_data(path="output"):
 
     POINT_CRS = set_crs_point()
     return get_crs_file
+
+
+# Ryde Pier Head-Portsmouth Harbour
 
 
 def get_j2_model(journey):
