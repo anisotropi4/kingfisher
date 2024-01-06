@@ -22,6 +22,24 @@ def list_files(filepath):
         files = files + tuple(f"{d}/{f}" for f in filenames)
     return files
 
+def get_output(pngfile):
+    """get_output: create output dict
+    
+    :param
+      pngfile: png image filename
+
+    :return
+      dict key first station name letter values tuple of name, CRS and path
+    """
+    r = defaultdict(list)
+    station = read_dataframe("work/odm-path.gpkg", layer="station_point")
+    crs_map = station.set_index("CRS")["Name"]
+    for png_path in pngfile:
+        crs = png_path[8:11]
+        name = crs_map[crs]
+        letter = name[0]
+        r[letter].append((name, crs, png_path))
+    return r
 
 def main(imagepath, filename):
     """main: create station.md file from png images under filepath
@@ -32,15 +50,8 @@ def main(imagepath, filename):
     """
     column_width = 2
     pngfile = sorted(list_files(imagepath))
-    station = read_dataframe("station.gpkg", layer="station_point")
-    crs_map = station.set_index("CRS")["Name"]
     # write_md("station.md", "# ORR Station Flow Images \n\n", pngfile)
-    output = defaultdict(list)
-    for png in pngfile:
-        crs = png[8:11]
-        name = crs_map[crs]
-        letter = name[0]
-        output[letter].append((name, crs, png))
+    output = get_output(pngfile)
     with open(filename, "w", encoding="utf-8") as fout:
         fout.write("# ORR Station Flow Images \n\n")
         fout.write(f"|{''.join(['Station|CRS|' * column_width])}\n")
