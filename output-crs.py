@@ -63,14 +63,16 @@ def get_gb():
     station = read_dataframe("work/odm-path.gpkg", layer="station_point")
     beeching_label = (
         """Aberdeen,Barrow-In-Furness,Birmingham,Blackpool,Bournmouth,Brighton,Bristol,Cambridge,"""
-        """Cardiff,Carlisle,Derby,Dover,Dundee,Edingburgh,Exeter,Glasgow,Gloucester,Grimsby,Harwich,"""
-        """Hull,Inverness,Ipswich,Leeds,Leicester,Lincoln,London,Manchester,Middlesborough,Newcastle,"""
-        """Norwich,Oxford,Plymouth,Portsmouth,Reading,Scarborough,Sheffield,Shrewsbury,"""
-        """South-End-On-Sea,Southampton,Stafford,Swansea,Thurso,Yarmouth,York"""
+        """Cardiff,Carlisle,Derby,Dover,Dundee,Edingburgh,Exeter,Glasgow,Gloucester,Grimsby,"""
+        """Harwich,Hull,Inverness,Ipswich,Leeds,Leicester,Lincoln,London,Manchester,"""
+        """Middlesborough,Newcastle,Norwich,Oxford,Plymouth,Portsmouth,Reading,Scarborough,"""
+        """Sheffield,Shrewsbury,South-End-On-Sea,Southampton,Stafford,Swansea,Thurso,"""
+        """Yarmouth,York"""
     ).split(",")
     beeching_crs = (
-        """ABD,BTN,BHM,BPN,BMH,BTN,BRI,CBG,CDF,CAR,DBY,DVP,DEE,EDB,EXC,GLC,GCR,GMB,HWC,HUL,INV,IPS,"""
-        """LDS,LEI,LCN,CHX,MAN,MBR,NCL,NRW,OXF,PLY,PMS,RDG,SCA,SHF,SHR,SOC,SOU,STA,SWA,THS,GYM,YRK"""
+        """ABD,BTN,BHM,BPN,BMH,BTN,BRI,CBG,CDF,CAR,DBY,DVP,DEE,EDB,EXC,GLC,GCR,GMB,HWC,HUL,INV,"""
+        """IPS,LDS,LEI,LCN,CHX,MAN,MBR,NCL,NRW,OXF,PLY,PMS,RDG,SCA,SHF,SHR,SOC,SOU,STA,SWA,THS,"""
+        """GYM,YRK"""
     ).split(",")
     map_label = station.set_index("CRS").loc[beeching_crs, ["Name", "geometry"]]
     map_label["label"] = beeching_label
@@ -93,7 +95,7 @@ def main():
             print(f"ERROR: {crs}")
             continue
         if (gf.type != "LineString").all():
-            continue        
+            continue
         print(crs)
         fig, ax = plt.subplots(dpi=300.0, layout="constrained")
         fig.set_figheight(8.0)
