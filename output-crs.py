@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from pyogrio import read_dataframe, write_dataframe
-from pyogrio.errors import DataSourceError
+from pyogrio.errors import DataLayerError, DataSourceError
 from shapely import unary_union
 from shapely.geometry import Polygon
 
@@ -84,12 +84,12 @@ def main():
     for filename in sorted(os.listdir("output")):
         crs = filename.replace(".gpkg", "")
         filepath = f"image/{crs[0]}/{crs}-rail.png"
-        #if os.path.isfile(filepath):
-        #    print(f"{crs} found")
-        #    continue
+        if os.path.isfile(filepath):
+            print(f"{crs} found")
+            continue
         try:
             gf = read_dataframe(f"output/{filename}", layer=crs)
-        except DataSourceError:
+        except (DataSourceError, DataLayerError):
             print(f"ERROR: {crs}")
             continue
         if (gf.type != "LineString").all():
