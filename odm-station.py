@@ -94,7 +94,7 @@ def read_odm_model(n=18):
     # }
     j0 = f"{str(n).zfill(2)}"
     j1 = f"{str(n+1).zfill(2)}"
-    filename = f"ODM_for_rdm_20{j0}-{j1}.csv"
+    filename = f"ODM_for_rdm_20{j0}-{j1}.csv.bz2"
     column = (
         """Financial_Year,origin_nlc,origin_station_name,origin_station_group,origin_region,"""
         """destination_nlc,destination_station_name,destination_station_group,"""
@@ -190,7 +190,7 @@ def get_missing_geometry(odm_model, naptan_station):
 
 
 def get_naptan_column(odm_model, naptan_station):
-    """get_naptan_column: get NaPTAN value""" 
+    """get_naptan_column: get NaPTAN value"""
     r = odm_model.copy()
     geometry = naptan_station["geometry"]
     (i, j), distance = r.sindex.nearest(geometry, return_distance=True)
@@ -232,6 +232,24 @@ def update_odm_model(odm_model, odm_station):
     return odm_model
 
 
+def scrub_odm_model(odm_model):
+    """scrub_odm_model: move rows of journeys to financial year columns"""
+    financial_year = [str(i) for i in set(odm_model["FinancialYear"])]
+    column = (
+        """o_nlc,o_name,o_group,o_region,d_nlc,"""
+        """d_name,d_group,d_region,o_CRS,d_CRS"""
+    ).split(",")
+    r = odm_model[column].drop_duplicates().reset_index(drop=True)
+    r[financial_year] = 0
+    column = ["o_nlc", "d_nlc"]
+    odm_model = odm_model.set_index(column, drop=False)
+    r = r.set_index(column, drop=False)
+    for k in financial_year:
+        data = odm_model[odm_model["FinancialYear"] == int(k)]
+        r.loc[data.index, k] = data.loc[data.index, "journeys"]
+    return r
+
+
 def main():
     """main: script execution point"""
     naptan_model = get_naptan()
@@ -241,6 +259,7 @@ def main():
     odm_model = get_odm_model()
     odm_station = get_odm_station(naptan_station, corpus_model, orr_station, odm_model)
     odm_model = update_odm_model(odm_model, odm_station)
+    odm_model = scrub_odm_model(odm_model)
     write_dataframe(odm_station, OUTPATH, layer="odm_station")
     write_dataframe(odm_model, OUTPATH, layer="odm_model")
 
