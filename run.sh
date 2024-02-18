@@ -23,15 +23,12 @@ do
     if [ ! -d image/${i} ]; then
         mkdir -p image/${i}
     fi
+    if [ ! -d vector/${i} ]; then
+        mkdir -p vector/${i}
+    fi
 done
 
 source venv/bin/activate
-
-echo get ODM data
-FILE=ODM-2021-22-ALL-journeys-slim.gpkg
-if [ ! -s data/${FILE} ]; then
-    curl -o data/${FILE} -L https://automaticknowledge.org/flowdata/${FILE}
-fi
 
 echo get network data
 FILE=network-model.gpkg
@@ -42,6 +39,7 @@ fi
 
 echo process ODM data
 if [ ! -s journeys-all.gpkg ]; then
+    ./odm-station.py
     ./odm-path.py
 fi
 
