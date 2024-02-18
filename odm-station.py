@@ -229,11 +229,14 @@ def update_odm_model(odm_model, odm_station):
         ii = odm_model[f"{k}_CRS"].isna()
         ij = odm_model.loc[ii, f"{k}_nlc"]
         odm_model.loc[ii, f"{k}_CRS"] = odm_station.loc[ij, "CRS"].values
+        ii = odm_model[f"{k}_name"].isna()
+        ij = odm_model.loc[ii, f"{k}_nlc"]
+        odm_model.loc[ii, f"{k}_name"] = odm_station.loc[ij, "Name"].values
     return odm_model
 
 
 def scrub_odm_model(odm_model):
-    """scrub_odm_model: move rows of journeys to financial year columns"""
+    """scrub_odm_model: journey rows to financial year columns"""
     financial_year = [str(i) for i in set(odm_model["FinancialYear"])]
     column = (
         """o_nlc,o_name,o_group,o_region,d_nlc,"""
