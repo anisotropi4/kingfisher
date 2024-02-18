@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 
-import io
-import json
+"""odm-path: use ORR financial year passenger ticket data calculate station and aggregated flow"""
 import os
+from calendar import isleap
 from itertools import pairwise
 
 import fiona
@@ -11,7 +11,6 @@ import networkx as nx
 import numpy as np
 import osmnx as ox
 import pandas as pd
-import requests
 from pyogrio import read_dataframe, write_dataframe
 from pyogrio.errors import DataLayerError, DataSourceError
 from shapely import STRtree, distance, get_coordinates, line_merge, snap
@@ -34,32 +33,6 @@ pd.set_option("display.max_columns", None)
 OUTPATH = "work/odm-path.gpkg"
 
 
-def get_databuffer(uri, encoding="utf-8"):
-    """Download data from URI and returns as an StringIO buffer
-
-    :param uri: param encoding:  (Default value = "utf-8")
-    :param encoding:  (Default value = "utf-8")
-
-    """
-    r = requests.get(uri, timeout=10)
-    return io.StringIO(str(r.content, encoding))
-
-
-def get_naptan():
-    """Download NaPTAN data as CSV
-    :returns:
-       GeoDataFrame
-    """
-    # NaPTAN data service
-    URI = "https://naptan.api.dft.gov.uk/v1/access-nodes?dataFormat=csv"
-    this_buffer = get_databuffer(URI)
-    df = pd.read_csv(this_buffer, low_memory=False).dropna(axis=1, how="all")
-    data = df[["Easting", "Northing"]].values
-    points = gp.points_from_xy(*data.T, crs="EPSG:27700")
-    r = gp.GeoDataFrame(data=df, geometry=points)
-    return r
-
-
 def combine_line(line):
     """combine_line: return LineString GeoSeries combining lines with intersecting endpoints
 
@@ -70,97 +43,6 @@ def combine_line(line):
     """
     r = MultiLineString(line.values)
     return gp.GeoSeries(line_merge(r).geoms, crs=CRS)
-
-
-def get_station(naptan):
-    """get_station
-
-    :param
-       naptan
-    """
-    fields = (
-        "ATCOCode,CommonName,LocalityName,ParentLocalityName,StopType,Status,geometry"
-    ).split(",")
-    r = naptan[naptan["StopType"].isin(["RLY", "MET"])]
-    r = r[fields].dropna(axis=1, how="all").fillna("-")
-    r["TIPLOC"] = r["ATCOCode"].str[4:]
-    r["Name"] = r["CommonName"].str.replace(" Rail Station", "")
-    return r
-
-
-def get_crs(corpus_model):
-    """get_crs:
-
-    :param
-       corpus_model
-    """
-    ix = corpus_model["3ALPHA"].str.strip() != ""
-    r = corpus_model[ix].copy()
-    return r
-
-
-def get_osmnx_lookup(name_list, tags={"railway": "station"}):
-    """get_osmnx_lookup:
-    :param
-      name_list
-    """
-    data = []
-    for i in name_list:
-        j = ox.features.features_from_address(i, tags=tags)
-        data.append(j)
-    r = pd.concat(data).reset_index()
-    return r.to_crs(CRS)
-
-
-def get_missing_station():
-    """get_missing_station:
-    :param
-      GeoDataFrame()
-    """
-    ox_lookup = {
-        "BOWSTRT": "Bow Street",
-        "SOHAM": "Soham",
-        "MAGHNTH": "Maghull North",
-        "WHLAND": "Whitland",
-    }
-    r = pd.DataFrame.from_dict(ox_lookup, orient="index", columns=["Name"])
-    r["CommonName"] = r["Name"] + " Rail Station"
-    r[["StopType", "Status"]] = ["RLY", "active"]
-    r = r.reset_index(names="TIPLOC")
-    column = "geometry"
-    data = get_osmnx_lookup(ox_lookup.values())
-    r[column] = data[column]
-    r["ATCOCode"] = "9100" + r["TIPLOC"]
-    column = "LocalityName,ParentLocalityName".split(",")
-    r[column] = "-"
-    return gp.GeoDataFrame(r)
-
-
-def get_station_crs(naptan_model, crs_model):
-    """
-
-    :param
-      naptan_model
-      crs_model:
-    """
-    lookup = {
-        "CLPHMJC": "CLJ",
-        "HEYMST": "HHB",
-        "LNDNBDE": "LBG",
-        "VICTRIE": "VIC",
-        "VAUXHLW": "VXH",
-        "WATRLMN": "WAT",
-        "WLSDNJL": "WIJ",
-    }
-    r = get_station(naptan_model)
-    s = get_missing_station()
-    r = pd.concat([s, r])
-    r = r.drop_duplicates(subset="TIPLOC")
-    r = r.join(crs_model.set_index("TIPLOC"), on="TIPLOC").fillna("")
-    r["CRS"] = r["3ALPHA"]
-    r = r.set_index("TIPLOC")
-    r.loc[lookup.keys(), "CRS"] = list(lookup.values())
-    return r.sort_index().reset_index()
 
 
 def get_end(geometry):
@@ -209,9 +91,9 @@ def get_split(v, separation=1.0e-6):
 
 
 def split_network(network_model, point):
-    """
+    """split_network:
 
-    :param network_model: param point:
+    :param network_model:
     :param point:
 
     """
@@ -223,6 +105,7 @@ def split_network(network_model, point):
 
 
 def get_ryde_portsmouth_wightlink(network_model):
+    """get_ryde_portsmouth_wightlink: cross the seven seas to Ryde"""
     tags = {"name": "Wightlink: Ryde - Portsmouth Fastcat (passenger)"}
     r = ox.features.features_from_place("Portsmouth", tags=tags)
     r = r["geometry"].to_crs(CRS).reset_index(drop=True)
@@ -234,7 +117,11 @@ def get_ryde_portsmouth_wightlink(network_model):
 
 
 def set_simple_model(rhye_fix=True):
-    """set_simple_model"""
+    """set_simple_model: read centre-line track-model to LineString
+
+    :param rhye_fix: add a random Isle of Wight ferry path
+
+    """
     try:
         r = read_dataframe(OUTPATH, layer="simple_model")
         return r["geometry"]
@@ -258,70 +145,16 @@ def set_simple_model(rhye_fix=True):
 
 
 def get_odm_model():
-    """ """
-    filepath = "data/ODM-2021-22-ALL-journeys-slim.gpkg"
-    return read_dataframe(filepath, layer="ODM-2021-22-ALL-journeys-slim")
+    """get_odm_model2: read odm_model generated using ORR and other data"""
+    filepath = "work/odm-station.gpkg"
+    r = read_dataframe(filepath, layer="odm_model")
+    return r, [i for i in r.columns if i[:2] == "20"]
 
 
-def set_naptan_model():
-    """ """
-    try:
-        r = read_dataframe(OUTPATH, layer="naptan")
-    except (DataSourceError, DataLayerError):
-        r = get_naptan()
-        write_dataframe(r, OUTPATH, layer="naptan")
-    return r
-
-
-def get_corpus_model():
-    """ """
-    with open("data/CORPUSExtract.json", "r", encoding="utf-8") as fin:
-        data = json.load(fin)
-    return pd.json_normalize(data, "TIPLOCDATA")
-
-
-def get_crs_code(model):
-    """
-
-    :param model:
-
-    """
-    r = pd.concat([model.iloc[:, 0], model.iloc[:, 1]])
-    return r.drop_duplicates().sort_values().reset_index(drop=True)
-
-
-def get_active_station(station, crs_code):
-    """
-
-    :param station: param crs_code:
-    :param crs_code:
-
-    """
-    ix = station["CRS"].isin(crs_code)
-    return station[ix].reset_index(drop=True)
-
-
-def set_station(naptan_model, odm_model):
-    """
-
-    :param naptan_model: param odm_model:
-    :param odm_model:
-
-    """
-    corpus_model = get_corpus_model()
-    try:
-        r = read_dataframe(OUTPATH, layer="station")
-    except (DataSourceError, DataLayerError):
-        crs_model = get_crs(corpus_model)
-        r = get_station_crs(naptan_model, crs_model)
-        write_dataframe(r, OUTPATH, layer="station")
-    try:
-        r = read_dataframe(OUTPATH, layer="active_station")
-    except (DataSourceError, DataLayerError):
-        crs_code = get_crs_code(odm_model[["o_TLC", "d_TLC"]])
-        r = get_active_station(r, crs_code)
-        write_dataframe(r, OUTPATH, layer="active_station")
-    return r
+def get_station():
+    """get_odm_model2: read odm_model generated using ORR and other data"""
+    filepath = "work/odm-station.gpkg"
+    return read_dataframe(filepath, layer="odm_station")
 
 
 def get_station_point(track_model, station):
@@ -361,7 +194,7 @@ def get_station_network(track_model, point):
     :param point:
 
     """
-    i, j = track_model.sindex.nearest(point)
+    _, j = track_model.sindex.nearest(point)
     r = split_network(track_model.iloc[j], point)
     ix = np.unique(j)
     r = pd.concat([r, track_model.drop(ix)])
@@ -420,11 +253,10 @@ def get_distance(length, lookup):
 
 
 def get_full_model(nx_path, station_point):
-    """get_full_model:
+    """get_full_model: calculate shortest path model
 
     :param
       nx_path
-      station_point:
       station_point:
     """
     column = ["source", "target"]
@@ -446,7 +278,7 @@ def get_full_model(nx_path, station_point):
 
 
 def set_full_model(nx_path, station_point):
-    """
+    """set_full_model: read or calculate path-model if not cached
 
     :param nx_path: param station_point:
     :param station_point:
@@ -493,11 +325,10 @@ def get_crow_distance(station_model, station_point):
     return r.set_index(column)
 
 
-def get_distance_model(station_model, station_point, track_model):
-    """
+def get_distance_model(station_model, station_point):
+    """get_distance_model:
 
-    :param station_model: param station_point:
-    :param track_model:
+    :param station_model:
     :param station_point:
 
     """
@@ -506,17 +337,16 @@ def get_distance_model(station_model, station_point, track_model):
     crs_map = station_point.set_index("CRS")["node"]
     r["source"] = crs_map.loc[r.iloc[:, 0]].values
     r["target"] = crs_map.loc[r.iloc[:, 1]].values
-    ix = np.sort(r[column].values)
     r = r.set_index(column, drop=False)
     return r
 
 
-def set_distance_model(odm_model, station_point, edge, full_model):
-    """
+def set_distance_model(odm_model, station_point, full_model):
+    """set_distance_model:
 
-    :param odm_model: param station_point:
-    :param edge: param full_model:
+    :param odm_model:
     :param station_point:
+    :param edge:
     :param full_model:
 
     """
@@ -526,10 +356,10 @@ def set_distance_model(odm_model, station_point, edge, full_model):
         return r
     except (DataSourceError, DataLayerError):
         column = (
-            """o_TLC,d_TLC,Financial_Year,journeys,o_STATION,o_RGNCTR,"""
-            """o_OWNER,d_STATION,d_RGNCTR,d_OWNER"""
+            """o_CRS,d_CRS,20182019,20192020,20202021,20212022,"""
+            """o_name,o_region,d_name,d_region,o_nlc,d_nlc"""
         ).split(",")
-        r = get_distance_model(odm_model[column], station_point, edge)
+        r = get_distance_model(odm_model[column], station_point)
         r["km-crow"] = get_crow_distance(r, station_point)
         s = full_model["distance"].round(2)
         ix = s.index.intersection(r.index)
@@ -554,7 +384,7 @@ def get_node_edge(node):
     return r
 
 
-def get_undirected_edge_model(edge, node):
+def get_undirected_edge_model(edge, node, financial_year):
     """
 
     :param edge: param node:
@@ -566,7 +396,7 @@ def get_undirected_edge_model(edge, node):
     r.index = r.index.swaplevel()
     s = get_node_edge(node)
     r = pd.concat([edge, r, s]).sort_index()
-    r["journeys"] = 0
+    r[financial_year] = 0
     r = r.sort_values("length")
     r = r.drop_duplicates(subset=["source", "target"], keep="last")
     r = r.sort_index()
@@ -574,7 +404,7 @@ def get_undirected_edge_model(edge, node):
     return r
 
 
-def get_directed_edge_model(edge, node):
+def get_directed_edge_model(edge, node, financial_year):
     """
 
     :param edge: param node:
@@ -587,7 +417,7 @@ def get_directed_edge_model(edge, node):
     r["geometry"] = r.reverse()
     s = get_node_edge(node)
     r = pd.concat([edge, r, s]).sort_index()
-    r["journeys"] = 0
+    r[financial_year] = 0
     r = r.sort_values("length")
     r = r.drop_duplicates(subset=["source", "target"], keep="last")
     r = r.sort_index()
@@ -603,14 +433,16 @@ def get_path(nx_path, n, journey_model):
     :param n:
 
     """
+    financial_year = journey_model.columns.to_list()
+    column = ["source", "target", "segment"] + financial_year
     path = nx.single_source_dijkstra_path(nx_path, n, weight="length")
-    EMPTY = pd.DataFrame([], columns=["source", "target", "segment", "journeys"])
+    empty = pd.DataFrame([], columns=column)
     r = pd.Series(path, name="segment")
     source = r.iloc[0][0]
     try:
         lookup = journey_model.loc[source, :].index
     except KeyError:
-        return EMPTY
+        return empty
     # set path for source node
     r.iloc[0] = [source] * 2
     r = r.map(pairwise).map(list).to_frame()
@@ -621,9 +453,9 @@ def get_path(nx_path, n, journey_model):
     ix = r.index.intersection(lookup)
     r = r.loc[ix].sort_index()
     if r.empty:
-        return EMPTY
+        return empty
     r = r.set_index(["source", "target"])
-    r["journeys"] = journey_model
+    r[financial_year] = journey_model
     r = r.explode("segment").reset_index()
     r.index = pd.MultiIndex.from_tuples(r["segment"])
     return r.sort_index()
@@ -647,88 +479,113 @@ def fn_crs_data(path="output"):
         """
         filepath = f"{path}/{crs}.gpkg"
         r = read_dataframe(filepath, layer=crs)
-        if crs in POINT_CRS:
+        if crs in _point_crs:
             s = read_dataframe(filepath, layer=crs)
             r = pd.concat([r, s])
         r = r.set_index(["source", "target"], drop=False)
         return r
 
-    POINT_CRS = set_crs_point()
+    _point_crs = set_crs_point()
     return get_crs_file
 
 
 # Ryde Pier Head-Portsmouth Harbour
 
 
-def get_j2_model(journey):
+def get_yearlength(financial_year):
+    """get_yearlength: return number of days in financial year
+
+    :param financial_year: list of financial year as str
+
+    """
+    r = [366.0 if isleap(int(i[4:])) else 365.0 for i in financial_year]
+    return np.asarray(r)
+
+
+def get_j2_model(journey, financial_year):
     """get_j2_model
     :param
-      journey
+      journey: DataFrame containing journey
+      financial_year: list containing financial year keys
     """
     r = journey.copy()
     ix = pd.MultiIndex.from_arrays(np.sort(r[["source", "target"]]).T, names=["u", "v"])
     r.index = ix
     r = r.sort_index()
-    r["j2"] = r["journeys"].groupby(["u", "v"]).sum() / 2
-    r["w2"] = r["j2"] * 7.0 / 365.0
+    column = [f"j2_{i}" for i in financial_year]
+    r[column] = (r[financial_year].groupby(["u", "v"]).sum() / 2).astype(int)
+    year_length = get_yearlength(financial_year)
+    r[[i.replace("j", "w") for i in column]] = r[column] * 7.0 / year_length
     r = r[~r.index.duplicated()]
     return r
 
 
-def initialize_data(odm_model):
+def initialize_data(odm_model, financial_year):
     """initialize_data:
     :param
       odm_model
     """
-    naptan_model = set_naptan_model()
     simple_model = set_simple_model()
-    active_station = set_station(naptan_model, odm_model)
+    active_station = get_station()
     station_point = set_station_point(simple_model, active_station)
     edge, node = set_edge_node(simple_model, station_point)
     station_point = update_station_point(station_point, node)
-    return station_point, edge, node
+    nx_path = nx.from_pandas_edgelist(edge, edge_attr="length")
+    journey = get_undirected_edge_model(edge, node, financial_year)
+    edge_node_model = get_directed_edge_model(edge, node, financial_year)
+    full_model = set_full_model(nx_path, station_point)
+    distance_model = set_distance_model(odm_model, station_point, full_model)
+    crs_map = station_point.set_index("CRS")[["Name", "node"]]
+    return crs_map, journey, nx_path, distance_model, edge_node_model
+
+
+def set_combined_data(journey, financial_year):
+    """set_combined_data:
+
+      :param journey: GeoDataFrame with passenger data
+      :param financial_year: list of financial years str
+
+    """
+    write_dataframe(journey, "journeys-all.gpkg", layer="journeys")
+    ix = (journey[financial_year] > 0).any(axis=1)
+    write_dataframe(journey[ix], "journeys-all.gpkg", layer="journey_model")
+    j2_model = get_j2_model(journey, financial_year)
+    write_dataframe(j2_model, "journeys-all.gpkg", layer="j2")
+    ix = (j2_model[financial_year] > 0).any(axis=1)
+    write_dataframe(j2_model[ix], "journeys-all.gpkg", layer="j2_model")
 
 
 def main():
     """main: script execution point"""
-    odm_model = get_odm_model()
-    station_point, edge, node = initialize_data(odm_model)
-    nx_path = nx.from_pandas_edgelist(edge, edge_attr="length")
-    journey = get_undirected_edge_model(edge, node)
-    edge_node_model = get_directed_edge_model(edge, node)
-    full_model = set_full_model(nx_path, station_point)
-    distance_model = set_distance_model(odm_model, station_point, edge, full_model)
-    crs_map = station_point.set_index("CRS")[["Name", "node"]]
+    odm_model, financial_year = get_odm_model()
+    crs_map, journey, nx_path, distance_model, edge_node_model = initialize_data(
+        odm_model, financial_year
+    )
     get_crs_file = fn_crs_data()
     for crs in sorted(crs_map.index):
         print(crs)
         filepath = f"output/{crs}.gpkg"
         if os.path.isfile(filepath):
             r = get_crs_file(crs)
-            journey.loc[r.index, "journeys"] += r["journeys"]
+            journey.loc[r.index, financial_year] += r[financial_year]
             continue
         n = crs_map.loc[crs, "node"]
-        r = get_path(nx_path, n, distance_model["journeys"])
+        r = get_path(nx_path, n, distance_model[financial_year])
         if r.empty:
             print(f"ERROR: {crs}\t{crs_map.loc[crs, 'Name']}")
             continue
-        r = r[["segment", "journeys"]].groupby("segment").sum()
-        journey.loc[r.index, "journeys"] += r["journeys"]
+        column = ["segment"] + financial_year
+        r = r[column].groupby("segment").sum()
+        journey.loc[r.index, financial_year] += r[financial_year]
         s = edge_node_model.loc[r.index].copy()
-        s["journeys"] = r
+        s[financial_year] = r
         ix = s.type == "LineString"
         write_dataframe(s[ix], filepath, layer=crs)
         ix = s.type == "Point"
         if ix.any():
             filepath = "output/all_point.gpkg"
             write_dataframe(s[ix], filepath, layer=crs)
-    write_dataframe(journey, "journeys-all.gpkg", layer="journeys")
-    ix = journey["journeys"] > 0
-    write_dataframe(journey[ix], "journeys-all.gpkg", layer="journey_model")
-    j2_model = get_j2_model(journey)
-    write_dataframe(j2_model, "journeys-all.gpkg", layer="j2")
-    ix = j2_model["j2"] > 0.0
-    write_dataframe(j2_model[ix], "journeys-all.gpkg", layer="j2_model")
+    set_combined_data(journey, financial_year)
 
 
 if __name__ == "__main__":
