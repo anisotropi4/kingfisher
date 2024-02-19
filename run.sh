@@ -44,7 +44,7 @@ if [ ! -s journeys-all.gpkg ]; then
 fi
 
 echo process image and markdown files
-if [ ! -s station.md ]; then
+if [ ! -s station-update.md ]; then
     ./output-crs.py
-    ./format-md.py
+    ./format-md.py station-update.md
 fi
