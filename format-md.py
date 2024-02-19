@@ -57,14 +57,14 @@ def main(imagepath, filename):
     output = get_output(pngfile)
     with open(filename, "w", encoding="utf-8") as fout:
         fout.write("# ORR Station Flow Images \n\n")
-        fout.write(f"|{''.join(['Station|FY|CRS|' * column_width])}\n")
-        fout.write(f'|{"|".join(["------"] * (column_width * 3))}|\n')
+        fout.write(f"|{''.join(['Station Financial Year|CRS|' * column_width])}\n")
+        fout.write(f'|{"|".join([":------"] * (column_width * 2))}|\n')
         for letter in sorted(output.keys()):
-            fout.write(f"|{letter}|\n")
+            fout.write(f"|{letter}||\n")
             r = sorted(output[letter])
             n = len(r) + column_width
             for k in [r[i:j] for i, j in pairwise(range(0, n, column_width))]:
-                text = "|".join([f"{p}|{r}|[{q}]({s})" for p, q, r, s in k])
+                text = "|".join([f"{p} {r}|[{q} {r}]({s})" for p, q, r, s in k])
                 fout.write(f"|{text}|\n")
 
 
