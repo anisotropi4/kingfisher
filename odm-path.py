@@ -355,9 +355,7 @@ def set_distance_model(odm_model, station_point, full_model, financial_year):
         r = r.set_index(["source", "target"], drop=False)
         return r
     except (DataSourceError, DataLayerError):
-        column = (
-            """o_CRS,d_CRS,o_name,o_region,d_name,d_region,o_nlc,d_nlc"""
-        ).split(",")
+        column = "o_CRS,d_CRS,o_name,o_region,d_name,d_region,o_nlc,d_nlc").split(",")
         column = column + financial_year
         r = get_distance_model(odm_model[column], station_point)
         r["km-crow"] = get_crow_distance(r, station_point)
@@ -534,7 +532,9 @@ def initialize_data(odm_model, financial_year):
     journey = get_undirected_edge_model(edge, node, financial_year)
     edge_node_model = get_directed_edge_model(edge, node, financial_year)
     full_model = set_full_model(nx_path, station_point)
-    distance_model = set_distance_model(odm_model, station_point, full_model, financial_year)
+    distance_model = set_distance_model(
+        odm_model, station_point, full_model, financial_year
+    )
     crs_map = station_point.set_index("CRS")[["Name", "node"]]
     return crs_map, journey, nx_path, distance_model, edge_node_model
 
@@ -542,8 +542,8 @@ def initialize_data(odm_model, financial_year):
 def set_combined_data(journey, financial_year):
     """set_combined_data:
 
-      :param journey: GeoDataFrame with passenger data
-      :param financial_year: list of financial years str
+    :param journey: GeoDataFrame with passenger data
+    :param financial_year: list of financial years str
 
     """
     write_dataframe(journey, "journeys-all.gpkg", layer="journeys")

@@ -22,9 +22,10 @@ def list_files(filepath):
         files = files + tuple(f"{d}/{f}" for f in filenames)
     return files
 
-def get_output(pngfile):
+
+def get_output(pngfile, year):
     """get_output: create output dict
-    
+
     :param
       pngfile: png image filename
 
@@ -38,13 +39,16 @@ def get_output(pngfile):
         crs = png_path[8:11]
         j0 = png_path[12:16]
         j1 = png_path[18:20]
-        year = f"{j0}-{j1}"
+        if j0 == "rail" and year:
+            continue
+        financial_year = f"{j0}-{j1}"
         name = crs_map[crs]
         letter = name[0]
-        r[letter].append((name, crs, year, png_path))
+        r[letter].append((name, crs, financial_year, png_path))
     return r
 
-def main(imagepath, filename):
+
+def main(imagepath, filename, year):
     """main: create station.md file from png images under filepath
 
     :param
@@ -54,7 +58,7 @@ def main(imagepath, filename):
     column_width = 1
     pngfile = sorted(list_files(imagepath))
     # write_md("station.md", "# ORR Station Flow Images \n\n", pngfile)
-    output = get_output(pngfile)
+    output = get_output(pngfile, year)
     with open(filename, "w", encoding="utf-8") as fout:
         fout.write("# ORR Station Flow Images \n\n")
         fout.write(f"|{''.join(['Station Financial Year|CRS|' * column_width])}\n")
@@ -76,5 +80,6 @@ if __name__ == "__main__":
     parser.add_argument(
         "filename", type=str, nargs="?", default="station.md", help="md filename"
     )
+    parser.add_argument("--year", help="financial year", action="store_false")
     args, _ = parser.parse_known_args()
-    main(args.path, args.filename)
+    main(args.path, args.filename, args.year)

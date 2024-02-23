@@ -118,7 +118,10 @@ def write_image(filename, image="image"):
         gf["lw"] = get_linear_lw(gf[year])
         ax.set_title(f"{crs} {year[:4]}-{year[6:]}", y=1.0, x=0.0, pad=-12)
         gf.plot(ax=ax, linewidth=gf["lw"], color="orange")
-        plt.savefig(filepath, bbox_inches="tight")
+        if ".png" in filepath:
+            plt.savefig(filepath, bbox_inches="tight", pil_kwargs={"optimize": True})
+        else:
+            plt.savefig(filepath, bbox_inches="tight")
         plt.close()
 
 
