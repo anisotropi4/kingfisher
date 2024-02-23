@@ -142,7 +142,7 @@ def get_missing(name, df, column):
 def get_odm_model():
     """get_odm_model: combine all ODM data for years 2018-2022"""
     data = []
-    for year in range(18, 22):
+    for year in range(18, 23):
         data.append(read_odm_model(year))
     r = pd.concat(data).reset_index(drop=True)
     r["FinancialYear"] = r["FinancialYear"].replace(1920, 20192020)
@@ -237,7 +237,7 @@ def update_odm_model(odm_model, odm_station):
 
 def scrub_odm_model(odm_model):
     """scrub_odm_model: journey rows to financial year columns"""
-    financial_year = [str(i) for i in set(odm_model["FinancialYear"])]
+    financial_year = sorted([str(i) for i in set(odm_model["FinancialYear"])])
     column = (
         """o_nlc,o_name,o_group,o_region,d_nlc,"""
         """d_name,d_group,d_region,o_CRS,d_CRS"""
