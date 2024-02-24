@@ -46,7 +46,10 @@ def get_linear_lw(line):
     """
     # r = line / (line.max() - line.min())
     r = line / 5.0e6
-    return (11.9 * r) + 0.1
+    r = (11.9 * r) + 0.1
+    ix = line == 0
+    r[ix] = 0.0
+    return r
 
 
 def get_gb():
@@ -115,7 +118,10 @@ def write_image(filename, image="image"):
         fig.patch.set_facecolor("#d4ebf2")
         mainland.plot(ax=ax, color="white")
         ax.axis("off")
-        gf["lw"] = get_linear_lw(gf[year])
+        if gf[year].sum() > 0.0:
+            gf["lw"] = get_linear_lw(gf[year])
+        else:
+            gf["lw"] = 0.0
         ax.set_title(f"{crs} {year[:4]}-{year[6:]}", y=1.0, x=0.0, pad=-12)
         gf.plot(ax=ax, linewidth=gf["lw"], color="orange")
         if ".png" in filepath:
