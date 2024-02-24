@@ -46,5 +46,6 @@ fi
 echo process image and markdown files
 if [ ! -s station-update.md ]; then
     ./output-crs.py
-    ./format-md.py image station-update.md
+    ./format-md.py image station.md
+    ./format-md.py image station-update.md --gif
 fi
