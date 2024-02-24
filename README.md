@@ -2,7 +2,7 @@
 Using the Office of Road and Rail (ORR) Financial Year 2018/19 to 2022/23 passenger travel data projected onto a shortest-path network using the centre-line track-model this project looks to create visualisation for passenger journey numbers for the active rail stations across the British rail network.
 
 ## Station Flow
-Individual animated station flows for the five financial-years and 2 579 stations on the mainline British rail network [here](station-updated.md). This is now in a **one column** format.
+Individual animated station flows for the five financial-years and 2 579 stations on the mainline British rail network [here](station-update.md). This is now in a **one column** format.
 
 ## Notes
 This is an update following the additional publication of passenger flow data by the ORR. The original FY2021/22 [README](README-alt.md) and **two column** format view is [available here](stations.md). As well as an [OpenInnovations blog post](https://open-innovations.org/blog/2024-01-08-passenger-journeys-pictures-at-a-rail-transport-exhibition) and a Bloomberg article ["Nine Maps Show How Britain Is on the Move"](https://www.bloomberg.com/news/features/2024-02-08/british-rail-train-ticket-data-maps-show-how-a-nation-travels-before-hs2)
