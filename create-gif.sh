@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #set -x
 
-LETTER=${1:A}
-FILESTUB=$(ls image/${LETTER}/???-rail.png | sed 's/-rail.png//')
+LETTER=${1:-A}
+FILESTUB=$(ls image/${LETTER}/???-*-rail.png | sed 's/-.*-rail.png//')
 for j in ${FILESTUB}
 do
     CRS=$(basename ${j})
