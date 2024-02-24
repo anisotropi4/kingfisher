@@ -1,22 +1,32 @@
 # kingfisher
-Using the Office of Road and Rail 2021/22 passenger travel data projected onto a shortest-path network using the centre-line track-model this project looks to create visualisation for passenger journey numbers for the active rail stations across the British rail network.
-
-|Aggregated Passenger Journeys|Colour Scale Passenger Journeys|
-|---|---|
-|![](j2-model-03.png)|![](j2-model-04.png)|
+Using the Office of Road and Rail (ORR) Financial Year 2018/19 to 2022/23 passenger travel data projected onto a shortest-path network using the centre-line track-model this project looks to create visualisation for passenger journey numbers for the active rail stations across the British rail network.
 
 ## Station Flow
-Individual station flows for the 2,567 stations on the mainline British rail network [here](station.md). This is in a **two column** format.
+Individual animated station flows for the five financial-years and 2 579 stations on the mainline British rail network [here](station-updated.md). This is now in a **one column** format.
+
+## Notes
+This is an update following the additional publication of passenger flow data by the ORR. The original FY2021/22 [README](README-alt.md) and **two column** format view is [available here](stations.md). As well as an [OpenInnovations blog post](https://open-innovations.org/blog/2024-01-08-passenger-journeys-pictures-at-a-rail-transport-exhibition) and a Bloomberg article ["Nine Maps Show How Britain Is on the Move"](https://www.bloomberg.com/news/features/2024-02-08/british-rail-train-ticket-data-maps-show-how-a-nation-travels-before-hs2)
+
+Station locations may change as they are now based on the ORR [Station Attributes for All-Mainline Stations](https://raildata.org.uk/dataProduct/P-f9c7e715-1367-47b0-aee3-38d73d2ebe04/dataFiles).
+
+|Aggregated Passenger Journeys|Aggregated Passenger Journeys|
+|---|---|
+|![](base/j2-model-201819.png)|![](base/j2-model-201920.png)|
+|![](base/j2-model-202021.png)|![](base/j2-model-202122.png)|
+|![](base/j2-model-202223.png)|![](base/j2-model-202022.png)|
+
+![](base/j2-model-animation.gif)
 
 ## Data
 All data used on the basis that it under open or permissive license
 
 1. The base map of mainland Britain is derived from the [WorldPop](https://hub.worldpop.org) base maps under [CC 4.0 by deed](https://creativecommons.org/licenses/by/4.0/) retrieved 2023-09-07.
-2. The centre-line track-model is hosted by [OpenRailData](https://github.com/openraildata/network-rail-gis) under the [Open Government License](https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/) by Network Rail retrieved 2023-07-11.
-3. The Origin Destination Matrix data was published by the Office of Road and Rail on the Rail Development Group Rail Data Market place, details [here](https://raildata.org.uk/partnerDetails/1034/details) under the [Open Government License](https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/). With a variant retrieved from [AutomaticKnowledge](https://automaticknowledge.org/flowdata/) dated 2023-12-06.
-4. The Network Rail CORPUS dataset is an open data feed which is released under a [OGL](https://networkrail.co.uk/who-we-are/transparency-and-ethics/transparency/open-data-feeds/network-rail-infrastructure-limited-data-feeds-licence/) retrieved 2023-11-29.
-5. The National Public Transport Access Network [NaPTAN](https://data.gov.uk/dataset/3b1766bf-04a3-44f5-bea9-5c74cf002e1d/national-public-transport-gazetteer-nptg) under [OGL](https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/), and is updated each time the scripts are run.
-6. OpenStreetMap data is then used to validate and also to identify 10 stations locations which is licensed under [CC-BY-SA 2.0](https://openstreetmap.org/copyright ) through the [OverPassAPI Turbo](https://overpass-turbo.eu/) service, and is updated each time the scripts are run.
+2. The centre-line track-model is hosted by [OpenRailData](https://github.com/openraildata/network-rail-gis) under the [Open Government License](https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/) by Network Rail, retrieved 2023-07-11.
+3. The Origin Destination Matrix data, for example [ODM 2022-23](https://raildata.org.uk/dashboard/dataProduct/P-a839de9f-eafa-495e-92e3-ff23a33ad876/dataFiles), were published by the [Office of Road and Rail](https://raildata.org.uk/partnerDetails/1034/details) on the Rail Development Group Rail Data Market place, details under the [Open Government License](https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/). Retrieved 2024-02-18, except FY2022/23 data 2024-02-22 as local [`bzip2`](http://www.bzip.org/) compressed copies.
+4. The [Station Attributes for All-Mainline Stations](https://raildata.org.uk/dataProduct/P-f9c7e715-1367-47b0-aee3-38d73d2ebe04/dataFiles) was publised by the [Office of Road and Rail](https://raildata.org.uk/partnerDetails/1034/details) under the [Open Government License](https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/). Retrieved 2024-02-18.
+5. The [Network Rail CORPUS dataset](https://wiki.openraildata.com/index.php/Reference_Data#Downloading_CORPUS_Data) is an open data feed which is released under a [OGL](https://networkrail.co.uk/who-we-are/transparency-and-ethics/transparency/open-data-feeds/network-rail-infratructure-limited-data-feeds-licence/). Retrieved 2023-11-29 as a local copy.
+6. The National Public Transport Access Network [NaPTAN](https://data.gov.uk/dataset/3b1766bf-04a3-44f5-bea9-5c74cf002e1d/national-public-transport-gazetteer-nptg) under [OGL](https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/), and is updated each time the scripts are run.
+7. While this implementation now uses NaPTAN and CORPUS to validate and identify six closed stations, the the Isle of Wight ferry-link continues to use [OpenStreetMap data](https://www.openstreetmap.org/#map=12/50.7738/-1.2607), licensed under [CC-BY-SA 2.0](https://openstreetmap.org/copyright ) through the [OverPassAPI Turbo](https://overpass-turbo.eu/) service, and is updated each time the scripts are run.
 
 
 ## Implementation Detail
@@ -37,14 +47,16 @@ This takes quite a long time. On my old kit quite few hours to complete all the 
 * create the directory structure, 
 * install required `python` dependencies in in a local `venv` virtual enviroment, 
 * download additional data,
-* create a cache file `work/odm-path.gpkg` containing intermediate data layers
-* create 2,567 `GeoPKG` files for each station on the mainland network in the `output` directory
+* create a station location file `work/odm-station.gpkg`,
+* create a cache file `work/odm-path.gpkg` containing intermediate data layers,
+* create 2 579 `GeoPKG` files for each station on the mainland network in the `output` directory,
 * create a `journeys-all.gpkg` file with an aggregated total for all network segments in the model,
-* create 2,567 `PNG` image files for each station in a heirachy of directories in the `image` directory
-* create a two-column `station.md` markdown file with a link to each image file
+* create 12 895 (5 x 2 579) `PNG` image files for each station in a heirachy of directories in the `image` directory
+* create 2 579 animated `GIF` image files for each station in a heirachy of directories in the `image` directory
+* create a one-column `station.md` markdown file with a link to each image file
 
 ## Acknowledgment
-The travel data was kindly provided by Alasdair Rae with the centre-line track-model by Peter Hicks through #OpenRailData. 
+The original travel data was kindly provided by Alasdair Rae, with the centre-line track-model by Peter Hicks through #OpenRailData. 
 
 ### License
 
