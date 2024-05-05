@@ -122,7 +122,7 @@ def write_image(filename, image="image"):
             gf["lw"] = get_linear_lw(gf[year])
         else:
             gf["lw"] = 0.0
-        ax.set_title(f"{crs} {year[:4]}-{year[6:]}", y=1.0, x=0.0, pad=-12)
+        ax.set_title(f"{crs} {year[:4]}-{year[6:]}", y=1.0, x=0.0, pad=-12, loc="left")
         gf.plot(ax=ax, linewidth=gf["lw"], color="orange")
         if ".png" in filepath:
             plt.savefig(filepath, bbox_inches="tight", pil_kwargs={"optimize": True})
@@ -135,11 +135,14 @@ def main():
     """main: execution block"""
     global mainland
     mainland = read_dataframe("data/ine.gpkg", layer="mainland")
-    pool = Pool(processes=(4 * os.cpu_count() - 1))
+    nthread = 4 * os.cpu_count() - 1
+    filelist = sorted(os.listdir("output"))
+    chunksize = int(np.ceil(len(filelist) / nthread))
+    pool = Pool(processes=nthread)
     output_image = partial(write_image)
-    r = pool.map(output_image, sorted(os.listdir("output")))
+    r = pool.map(output_image, filelist, chunksize)
     output_image = partial(write_image, image="vector")
-    r = pool.map(output_image, sorted(os.listdir("output")))
+    r = pool.map(output_image, filelist, chunksize)
 
 
 if __name__ == "__main__":
