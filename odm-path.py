@@ -31,6 +31,7 @@ CRS = "EPSG:27700"
 pd.set_option("display.max_columns", None)
 
 OUTPATH = "work/odm-path.gpkg"
+STATIONPATH = "work/station-path.gpkg"
 
 
 def combine_line(line):
@@ -160,7 +161,7 @@ def get_station():
 def get_station_point(track_model, station):
     """
 
-    :param track_model: param station:
+    :param track_model
     :param station:
 
     """
@@ -180,10 +181,10 @@ def set_station_point(simple_model, active_station):
 
     """
     try:
-        r = read_dataframe(OUTPATH, "station_point")
+        r = read_dataframe(STATIONPATH, "station_point")
     except (DataSourceError, DataLayerError):
         r = get_station_point(simple_model, active_station)
-        write_dataframe(r, OUTPATH, "station_point")
+        write_dataframe(r, STATIONPATH, "station_point")
     return r
 
 
@@ -204,7 +205,7 @@ def get_station_network(track_model, point):
 def set_edge_node(simple_model, station_point):
     """
 
-    :param simple_model: param station_point:
+    :param simple_model:
     :param station_point:
 
     """
@@ -296,7 +297,7 @@ def set_full_model(nx_path, station_point):
 def update_station_point(station_point, node):
     """
 
-    :param station_point: param node:
+    :param station_point
     :param node:
 
     """
@@ -341,7 +342,7 @@ def get_distance_model(station_model, station_point):
     return r
 
 
-def set_distance_model(odm_model, station_point, full_model, financial_year):
+def set_distance_model(odm_model, station_point, full_model):
     """set_distance_model:
 
     :param odm_model:
@@ -355,8 +356,10 @@ def set_distance_model(odm_model, station_point, full_model, financial_year):
         r = r.set_index(["source", "target"], drop=False)
         return r
     except (DataSourceError, DataLayerError):
-        column = "o_CRS,d_CRS,o_name,o_region,d_name,d_region,o_nlc,d_nlc".split(",")
-        column = column + financial_year
+        column = (
+            """o_CRS,d_CRS,20182019,20192020,20202021,20212022,"""
+            """o_name,o_region,d_name,d_region,o_nlc,d_nlc"""
+        ).split(",")
         r = get_distance_model(odm_model[column], station_point)
         r["km-crow"] = get_crow_distance(r, station_point)
         s = full_model["distance"].round(2)
@@ -532,9 +535,7 @@ def initialize_data(odm_model, financial_year):
     journey = get_undirected_edge_model(edge, node, financial_year)
     edge_node_model = get_directed_edge_model(edge, node, financial_year)
     full_model = set_full_model(nx_path, station_point)
-    distance_model = set_distance_model(
-        odm_model, station_point, full_model, financial_year
-    )
+    distance_model = set_distance_model(odm_model, station_point, full_model)
     crs_map = station_point.set_index("CRS")[["Name", "node"]]
     return crs_map, journey, nx_path, distance_model, edge_node_model
 
