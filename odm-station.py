@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """odm-station: combine ODM years and create single station point geography"""
+import gzip
 import json
 import re
 
 import geopandas as gp
-import numpy as np
 import pandas as pd
 from pyogrio import write_dataframe
+from pyogrio.errors import DataLayerError, DataSourceError
 
 # lookup = {
 #    "CLJ": ("CLPHMJ1", "CLPHMJ2", "CLPHMJC", "CLPHMJM", "CLPHMJW"),
@@ -38,12 +39,17 @@ def get_naptan():
     return r
 
 
-def get_naptan_station(naptan):
+def get_naptan_station():
     """get_naptan_station
-
     :param
        naptan
     """
+    try:
+        r = gp.read_file(OUTPATH, layer="naptan")
+        return r
+    except (DataSourceError, DataLayerError):
+        pass
+    naptan = get_naptan()
     fields = (
         "ATCOCode,CommonName,LocalityName,ParentLocalityName,StopType,Status,geometry"
     ).split(",")
@@ -58,11 +64,12 @@ def get_naptan_station(naptan):
 def get_attribute_model():
     """get_attribute_mode: read and scrub ORR station attribute data"""
     df = pd.read_excel(
-        "data/station-attributes-for-all-mainline-stations.xlsx",
+        "data/table-6329-station-attributes-for-all-mainline-stations.ods",
+        # "data/station-attributes-for-all-mainline-stations.xlsx",
         header=3,
         sheet_name="6329_station_attributes",
     )
-    df.columns = [i.replace("\n", "") for i in df.columns]
+    df.columns = df.columns.str.replace("\n", "").str.replace(" [r]", "")
     data = df[
         ["Ordnance Survey grid: Easting", "Ordnance Survey grid: Northing"]
     ].values
@@ -74,14 +81,16 @@ def get_attribute_model():
         "Network Rail Region": "Region",
     }
     r = gp.GeoDataFrame(data=df[column.keys()], geometry=points, crs=CRS)
-    return r.rename(columns=column).set_index("NLC", drop=False)
+    r = r.rename(columns=column)
+    r["NLC"] = r["NLC"] * 100
+    return r.set_index("NLC", drop=False)
 
 
 def get_corpus_model():
     """get_corpus_model:"""
-    with open("data/CORPUSExtract.json", "r", encoding="utf-8") as fin:
+    with gzip.open("data/CORPUSExtract.json.gz", "r") as fin:
         data = json.load(fin)
-    return pd.json_normalize(data, "TIPLOCDATA")
+    return pd.json_normalize(data, "TIPLOCDATA").drop_duplicates()
 
 
 def read_odm_model(n=18):
@@ -96,25 +105,14 @@ def read_odm_model(n=18):
     j1 = f"{str(n+1).zfill(2)}"
     filename = f"ODM_for_rdm_20{j0}-{j1}.csv.bz2"
     column = (
-        """Financial_Year,origin_nlc,origin_station_name,origin_station_group,origin_region,"""
-        """destination_nlc,destination_station_name,destination_station_group,"""
-        """destination_region,journeys"""
-    )
-    column = {
-        "Financial_Year": "FinancialYear",
-        "origin_nlc": "o_nlc",
-        "origin_station_name": "o_name",
-        "origin_station_group": "o_group",
-        "origin_region": "o_region",
-        "origin_tlc": "o_CRS",
-        "destination_nlc": "d_nlc",
-        "destination_station_name": "d_name",
-        "destination_station_group": "d_group",
-        "destination_region": "d_region",
-        "destination_tlc": "d_CRS",
-        "journeys": "journeys",
-    }
+        """Financial_Year,FinancialYear,origin_nlc,o_nlc,origin_station_name,o_name,"""
+        """origin_station_group,o_group,origin_region,o_region,origin_tlc,o_CRS,destination_nlc,"""
+        """d_nlc,destination_station_name,d_name,destination_station_group,d_group,"""
+        """destination_region,d_region,destination_tlc,d_CRS,journeys,journeys"""
+    ).split(",")
+    column = dict(zip(column[::2], column[1::2]))
     r = pd.read_csv(f"data/{filename}", low_memory=False).rename(columns=column)
+    r[["o_nlc", "d_nlc"]] = r[["o_nlc", "d_nlc"]] * 100
     return r
 
 
@@ -140,9 +138,9 @@ def get_missing(name, df, column):
 
 
 def get_odm_model():
-    """get_odm_model: combine all ODM data for years 2018-2022"""
+    """get_odm_model: combine all ODM data for years 2018-2023"""
     data = []
-    for year in range(18, 23):
+    for year in range(18, 24):
         data.append(read_odm_model(year))
     r = pd.concat(data).reset_index(drop=True)
     r["FinancialYear"] = r["FinancialYear"].replace(1920, 20192020)
@@ -163,18 +161,14 @@ def get_base_odm_station(odm_model):
     return r.set_index("NLC", drop=False)
 
 
-def get_missing_crs(odm_station, orr_station, corpus):
+def get_missing_crs(odm_station, corpus):
     """fix_missing_crs: fix missing CRS values"""
-    crs_lookup = {6909: "AGR"}
+    crs_lookup = {690900: "AGR"}
     r = odm_station.copy()
-    missing = r[r["CRS"].isna()]
-    ix = missing.index.intersection(orr_station.index)
-    r.loc[ix, "CRS"] = orr_station.loc[ix, "CRS"]
     missing = r[r["CRS"].isna()]
     missing = get_missing(missing["Name"], corpus, "NLCDESC")
     r.loc[missing.index, "CRS"] = missing["3ALPHA"]
     missing = r[r["CRS"].isna()]
-    # from wikipedia https://en.wikipedia.org/wiki/Angel_Road_railway_station
     r.loc[missing.index, "CRS"] = missing.index.map(crs_lookup)
     return r
 
@@ -189,35 +183,63 @@ def get_missing_geometry(odm_model, naptan_station):
     return r
 
 
+def get_corpus_column(odm_model, corpus_model):
+    """get_corpus_column: get CORPUS value"""
+    r = odm_model.copy().set_index("CRS")
+    s = corpus_model[corpus_model["3ALPHA"].str.strip() != ""].set_index("3ALPHA")
+    ix = s.index.intersection(r.index)
+    column = ["STANOX", "TIPLOC", "UIC", "NLCDESC"]
+    r.loc[ix, column] = s.loc[ix, column]
+    return r.reset_index()
+
+
 def get_naptan_column(odm_model, naptan_station):
     """get_naptan_column: get NaPTAN value"""
-    r = odm_model.copy()
-    geometry = naptan_station["geometry"]
-    (i, j), distance = r.sindex.nearest(geometry, return_distance=True)
-    df_map = pd.DataFrame(np.stack([i, j]).T, columns=["i_index", "j_index"], dtype=int)
-    df_map.loc[i, "distance"] = distance
-    df_map = df_map.sort_values(["j_index", "distance"])
-    df_map = df_map.drop_duplicates(subset="j_index").sort_index()
-    column = (
-        """CommonName,LocalityName,ParentLocalityName,StopType,Status,TIPLOC"""
-    ).split(",")
+    r = odm_model.copy().set_index("TIPLOC")
+    column = ("""CommonName,LocalityName,ParentLocalityName,StopType,Status""").split(
+        ","
+    )
     r[column] = ""
-    ii, ij = df_map[["i_index", "j_index"]].values.T
-    r.loc[ij, column] = naptan_station.loc[ii, column].values
-    return r
+    s = naptan_station.set_index("TIPLOC")
+    ix = s.index.intersection(r.index)
+    r.loc[ix, column] = s.loc[ix, column]
+    # geometry = naptan_station["geometry"]
+    # (i, j), distance = r.sindex.nearest(geometry, return_distance=True)
+    # df_map = pd.DataFrame(np.stack([i, j]).T, columns=["i_index", "j_index"], dtype=int)
+    # df_map.loc[i, "distance"] = distance
+    # df_map = df_map.sort_values(["j_index", "distance"])
+    # df_map = df_map.drop_duplicates(subset="j_index").sort_index()
+    # ii, ij = df_map[["i_index", "j_index"]].values.T
+    # r.loc[ij, column] = naptan_station.loc[ii, column].values
+    return r.reset_index()
 
 
 def get_odm_station(naptan_station, corpus_model, orr_station, odm_model):
     """get_odm_station: fix up station data"""
     odm_station = get_base_odm_station(odm_model)
-    odm_station = get_missing_crs(odm_station, orr_station, corpus_model)
+    odm_station = get_missing_crs(odm_station, corpus_model)
     ix = odm_station.index.intersection(orr_station.index)
     geometry = orr_station.loc[ix, "geometry"]
     r = gp.GeoDataFrame(odm_station, geometry=geometry, crs=CRS).reset_index(drop=True)
     r = get_missing_geometry(r, naptan_station)
+    r = get_corpus_column(r, corpus_model)
     r = get_naptan_column(r, naptan_station)
     r["Group"] = r["Group"].fillna("")
-    return r.set_index("NLC", drop=False)
+    ix = r["NLC"] == 690900
+    r.loc[ix, ["TIPLOC", "STANOX", "UIC"]] = [
+        "ANGELRD",
+        51924,
+        69090,
+    ]
+    column = ["FinancialYear", "o_nlc", "journeys"]
+    s = odm_model[column].rename(columns={"o_nlc": "NLC"})
+    s = s.groupby(["NLC", "FinancialYear"]).sum().reset_index()
+    s = s.pivot(index="NLC", columns="FinancialYear", values="journeys")
+    s = s.fillna(-9999999).astype(int)
+    s.columns = s.columns.astype(str)
+    r = r.set_index("NLC", drop=False)
+    r[s.columns] = s
+    return r.fillna("")
 
 
 def update_odm_model(odm_model, odm_station):
@@ -255,14 +277,14 @@ def scrub_odm_model(odm_model):
 
 def main():
     """main: script execution point"""
-    naptan_model = get_naptan()
-    naptan_station = get_naptan_station(naptan_model).reset_index(drop=True)
+    naptan_station = get_naptan_station().reset_index(drop=True)
     corpus_model = get_corpus_model()
     orr_station = get_attribute_model()
     odm_model = get_odm_model()
     odm_station = get_odm_station(naptan_station, corpus_model, orr_station, odm_model)
     odm_model = update_odm_model(odm_model, odm_station)
     odm_model = scrub_odm_model(odm_model)
+    write_dataframe(naptan_station, OUTPATH, layer="naptan")
     write_dataframe(odm_station, OUTPATH, layer="odm_station")
     write_dataframe(odm_model, OUTPATH, layer="odm_model")
 
