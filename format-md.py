@@ -33,7 +33,7 @@ def get_output(imagefile, year):
       dict key first station name letter values tuple of name, CRS and path
     """
     r = defaultdict(list)
-    station = read_dataframe("work/odm-path.gpkg", layer="station_point")
+    station = read_dataframe("work/odm-station.gpkg", layer="odm_station")
     crs_map = station.set_index("CRS")["Name"]
     for image_path in imagefile:
         crs = image_path[8:11]
