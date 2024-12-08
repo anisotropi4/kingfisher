@@ -2,7 +2,7 @@
 Using the Office of Road and Rail (ORR) Financial Year 2018/19 to 2022/23 passenger travel data projected onto a shortest-path network using the centre-line track-model this project looks to create visualisation for passenger journey numbers for the active rail stations across the British rail network.
 
 ## Station Flow
-Individual animated station flows for the five financial-years and 2 579 stations on the mainline British rail network [here](station-update.md). This is now in a **one column** format.
+Individual animated station flows for the five financial-years and 2 587 stations on the mainline British rail network [here](station-update.md). This is now in a **one column** format.
 
 ## Notes
 This is an update following the additional publication of passenger flow data by the ORR. The original FY2021/22 [README](README-alt.md) and **two column** format view is [available here](stations.md). As well as an [OpenInnovations blog post](https://open-innovations.org/blog/2024-01-08-passenger-journeys-pictures-at-a-rail-transport-exhibition) and a Bloomberg article ["Nine Maps Show How Britain Is on the Move"](https://www.bloomberg.com/news/features/2024-02-08/british-rail-train-ticket-data-maps-show-how-a-nation-travels-before-hs2)
@@ -49,14 +49,14 @@ This takes quite a long time. On my old kit quite few hours to complete all the 
 * download additional data,
 * create a station location file `work/odm-station.gpkg`,
 * create a cache file `work/odm-path.gpkg` containing intermediate data layers,
-* create 2 579 `GeoPKG` files for each station on the mainland network in the `output` directory,
+* create 2 857 `GeoPKG` files for each station on the mainland network in the `output` directory,
 * create a `journeys-all.gpkg` file with an aggregated total for all network segments in the model,
-* create 12 895 (5 x 2 579) `PNG` image files for each station in a heirachy of directories in the `image` directory
-* create 2 579 animated `GIF` image files for each station in a heirachy of directories in the `image` directory
+* create 15 522 (6 x 2 587) `PNG` image files for each station in a heirachy of directories in the `image` directory
+* create 2 587 animated `GIF` image files for each station in a heirachy of directories in the `image` directory
 * create a one-column `station.md` markdown file with a link to each image file
 
 ## Acknowledgment
-The original travel data was kindly provided by Alasdair Rae, with the centre-line track-model by Peter Hicks through #OpenRailData. 
+The original travel data was kindly provided by Alasdair Rae, with the original centre-line track-model by Peter Hicks through #OpenRailData. 
 
 ### License
 
