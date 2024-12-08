@@ -11,11 +11,11 @@ Station locations may change as they are now based on the ORR [Station Attribute
 
 |Aggregated Passenger Journeys|Aggregated Passenger Journeys|
 |---|---|
-|![](base/j2-model-201819.png)|![](base/j2-model-201920.png)|
-|![](base/j2-model-202021.png)|![](base/j2-model-202122.png)|
-|![](base/j2-model-202223.png)|![](base/j2-model-202324.png)|
+|![](base/j1-model-201819.png)|![](base/j1-model-201920.png)|
+|![](base/j1-model-202021.png)|![](base/j1-model-202122.png)|
+|![](base/j1-model-202223.png)|![](base/j1-model-202324.png)|
 
-![](base/j2-model-animation.gif)
+![](base/j1-model-animation.gif)
 
 ## Data
 All data used on the basis that it under open or permissive license
