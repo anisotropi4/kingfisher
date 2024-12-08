@@ -48,7 +48,7 @@ if [ ! -s station-update.md ]; then
     ./output-crs.py
     for i in {A..Z}
     do    
-	./create-git.sh ${i}
+	./create-gif.sh ${i}
     done
     ./format-md.py image station.md
     ./format-md.py image station-update.md --gif
