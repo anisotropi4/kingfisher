@@ -141,8 +141,8 @@ def main():
     pool = Pool(processes=nthread)
     output_image = partial(write_image)
     r = pool.map(output_image, filelist, chunksize)
-    output_image = partial(write_image, image="vector")
-    r = pool.map(output_image, filelist, chunksize)
+    # output_image = partial(write_image, image="vector")
+    # r = pool.map(output_image, filelist, chunksize)
 
 
 if __name__ == "__main__":
