@@ -36,6 +36,7 @@ CRS = "EPSG:27700"
 pd.set_option("display.max_columns", None)
 
 OUTPATH = "work/odm-path.gpkg"
+OUTFILE = "work/odm-distance.parquet.xz"
 
 
 def snap_point_line(point, line):
@@ -257,8 +258,8 @@ def set_simple_model(active_station, rhye_fix=True):
 
 def get_odm_model():
     """get_odm_model2: read odm_model generated using ORR and other data"""
-    filepath = "work/odm-station.gpkg"
-    return read_dataframe(filepath, layer="odm_model")
+    filepath = "work/odm-model.parquet.xz"
+    return pd.read_parquet(filepath)
 
 
 def get_station():
@@ -297,14 +298,17 @@ def set_distance_model(odm_model, nx_list, node, d):
         """o_name,o_region,d_name,d_region,o_nlc,d_nlc,crow-km,distance-km"""
     ).split(",")
     try:
-        r = read_dataframe(OUTPATH, layer="distance_model")
+        r = pd.read_parquet(OUTFILE)
         r = r.set_index(["o_CRS", "d_CRS"], drop=False)
-    except (DataSourceError, DataLayerError):
+        # r = read_dataframe(OUTPATH, layer="distance_model")
+        # r = r.set_index(["o_CRS", "d_CRS"], drop=False)
+    except FileNotFoundError:
         r = odm_model.set_index(["o_CRS", "d_CRS"], drop=False)
         r["crow-km"] = get_crow_distance(r, node)
         s = get_crs_edge_distance(d, node, nx_list)
         r["distance-km"] = s.loc[r.index] / 1.0e3
-        write_dataframe(r[column], OUTPATH, layer="distance_model")
+        r[column].to_parquet(OUTFILE)
+        #write_dataframe(r[column], OUTPATH, layer="distance_model")
     return r[column]
 
 

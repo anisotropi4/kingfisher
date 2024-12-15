@@ -23,6 +23,7 @@ CRS = "EPSG:27700"
 pd.set_option("display.max_columns", None)
 
 OUTPATH = "work/odm-station.gpkg"
+OUTFILE = "work/odm-model.parquet.xz"
 
 
 def get_naptan():
@@ -286,7 +287,7 @@ def main():
     odm_model = scrub_odm_model(odm_model)
     write_dataframe(naptan_station, OUTPATH, layer="naptan")
     write_dataframe(odm_station, OUTPATH, layer="odm_station")
-    write_dataframe(odm_model, OUTPATH, layer="odm_model")
+    odm_model.to_parquet(OUTFILE)
 
 
 if __name__ == "__main__":
