@@ -13,7 +13,7 @@ import geopandas as gp
 import numpy as np
 import osmnx as ox
 import pandas as pd
-from pyogrio import read_dataframe, write_dataframe
+from pyarrow import ArrowInvalid
 from pyogrio.errors import DataLayerError, DataSourceError
 from scipy import sparse
 from scipy.sparse.csgraph import connected_components, shortest_path
@@ -36,7 +36,7 @@ CRS = "EPSG:27700"
 pd.set_option("display.max_columns", None)
 
 OUTPATH = "work/odm-path.gpkg"
-OUTFILE = "work/odm-distance.parquet.xz"
+OUTDISTANCE = "work/odm-distance.parquet.gz"
 
 
 def snap_point_line(point, line):
@@ -99,9 +99,7 @@ def get_source_target(line):
     edge.iloc[i, -1] = j
 
     column = ["source", "target"]
-    ix = edge["source"] > edge["target"]
-    edge.loc[ix, column] = edge.loc[ix, column[::-1]].values
-    edge.loc[ix, "geometry"] = edge.loc[ix, "geometry"].reverse()
+    edge[column] = np.sort(edge[column], axis=1)
     edge = edge.drop_duplicates(subset=column).reset_index(drop=True)
     edge["edge"] = edge.index
     return node, edge
@@ -231,14 +229,16 @@ def set_simple_model(active_station, rhye_fix=True):
 
     """
     try:
-        r = read_dataframe(OUTPATH, layer="simple-model")
-        s = read_dataframe(OUTPATH, layer="rail-station")
+        r = gp.read_file(OUTPATH, layer="simple-model", engine="pyogrio")
+        s = gp.read_file(OUTPATH, layer="rail-station", engine="pyogrio")
         return r, s
     except (DataSourceError, DataLayerError):
         try:
-            network_model = read_dataframe(OUTPATH, layer="network-model")
+            network_model = gp.read_file(
+                OUTPATH, layer="network-model", engine="pyogrio"
+            )
         except (DataSourceError, DataLayerError):
-            network_model = read_dataframe(
+            network_model = gp.read_file(
                 "data/network-model.gpkg", layer="TrackCentreLine"
             )
         network_model = network_model.to_crs(CRS)
@@ -249,23 +249,23 @@ def set_simple_model(active_station, rhye_fix=True):
     if rhye_fix:
         r = get_ryde_portsmouth_wightlink(network_model)
         r = pd.concat([network_model, r]).reset_index(drop=True)
-    write_dataframe(r, OUTPATH, layer="network-model")
+    r.to_file(OUTPATH, layer="network-model", engine="pyogrio")
     r = split_network(r, s)
-    write_dataframe(r, OUTPATH, layer="simple-model")
-    write_dataframe(s, OUTPATH, layer="rail-station")
+    r.to_file(OUTPATH, layer="simple-model", engine="pyogrio")
+    s.to_file(OUTPATH, layer="rail-station", engine="pyogrio")
     return r, s
 
 
 def get_odm_model():
-    """get_odm_model2: read odm_model generated using ORR and other data"""
-    filepath = "work/odm-model.parquet.xz"
+    """get_odm_model: read odm_model generated using ORR and other data"""
+    filepath = "work/odm-model.parquet.gz"
     return pd.read_parquet(filepath)
 
 
 def get_station():
-    """get_odm_model: read odm_model generated using ORR and other data"""
-    filepath = "work/odm-station.gpkg"
-    return read_dataframe(filepath, layer="odm_station")
+    """get_station: read odm_station generated using ORR and other data"""
+    filepath = "work/odm-station.parquet.gz"
+    return gp.read_parquet(filepath)
 
 
 def get_crow_distance(edge, node):
@@ -298,7 +298,7 @@ def set_distance_model(odm_model, nx_list, node, d):
         """o_name,o_region,d_name,d_region,o_nlc,d_nlc,crow-km,distance-km"""
     ).split(",")
     try:
-        r = pd.read_parquet(OUTFILE)
+        r = pd.read_parquet(OUTDISTANCE)
         r = r.set_index(["o_CRS", "d_CRS"], drop=False)
         # r = read_dataframe(OUTPATH, layer="distance_model")
         # r = r.set_index(["o_CRS", "d_CRS"], drop=False)
@@ -307,8 +307,8 @@ def set_distance_model(odm_model, nx_list, node, d):
         r["crow-km"] = get_crow_distance(r, node)
         s = get_crs_edge_distance(d, node, nx_list)
         r["distance-km"] = s.loc[r.index] / 1.0e3
-        r[column].to_parquet(OUTFILE)
-        #write_dataframe(r[column], OUTPATH, layer="distance_model")
+        r[column].to_parquet(OUTDISTANCE, compression="gzip")
+        # write_dataframe(r[column], OUTPATH, layer="distance_model")
     return r[column]
 
 
@@ -395,6 +395,7 @@ def get_all_cs_segment(odm_path, nx_list):
     for i, j in enumerate(nx_list):
         if i % 64 == 0:
             print(str(i).rjust(8), str(j).rjust(8))
+        # ix = np.where(j == np.asarray(nx_list))[0][0]
         r = get_source_cs_segment(j, odm_path, nx_list)
         if r.empty:
             continue
@@ -418,6 +419,7 @@ def get_source_cs_segment(source, odm_path, nx_list):
     data = np.asarray(base_list)
     ix = np.where(source == np.asarray(nx_list))[0][0]
     path = odm_path[ix][base_list]
+    # path = odm_path[base_list]
     mask = path == -9999
     j = 0
     while not mask.all():
@@ -429,6 +431,7 @@ def get_source_cs_segment(source, odm_path, nx_list):
         i = np.where(mask)[0]
         path[i] = i
         path = odm_path[ix][path]
+        # path = odm_path[path]
         path[i] = -9999
         j = j + 1
     s = data.T
@@ -441,8 +444,8 @@ def get_source_cs_segment(source, odm_path, nx_list):
 def set_simple_node_edge(rail_model, active_station):
     """set_simple_edge_node:"""
     try:
-        node = read_dataframe(OUTPATH, layer="simple_node")
-        edge = read_dataframe(OUTPATH, layer="simple_edge")
+        node = gp.read_file(OUTPATH, layer="simple_node", engine="pyogrio")
+        edge = gp.read_file(OUTPATH, layer="simple_edge", engine="pyogrio")
         return node, edge
     except (DataSourceError, DataLayerError):
         pass
@@ -453,8 +456,8 @@ def set_simple_node_edge(rail_model, active_station):
     # column = ["source", "target"]
     edge_model = get_nx_geometry(edge_segment["path"], edge, station_point)
     edge, node = get_station_edge_node(edge_model, station_point)
-    write_dataframe(node, OUTPATH, layer="simple_node")
-    write_dataframe(edge, OUTPATH, layer="simple_edge")
+    node.to_file(OUTPATH, layer="simple_node", engine="pyogrio")
+    edge.to_file(OUTPATH, layer="simple_edge", engine="pyogrio")
     return node, edge
 
 
@@ -470,20 +473,21 @@ def set_combined_data(journey, financial_year):
     # write_dataframe(journey[ix], "journeys-all.gpkg", layer="journey_model")
     r = journey.copy()
     r[financial_year] = 2 * r[financial_year]
-    write_dataframe(journey, "journeys-all.gpkg", layer="journey")
+    journey.to_file("journeys-all.gpkg", layer="journey", engine="pyogrio")
     j2_model = get_j2_model(journey, financial_year)
-    write_dataframe(j2_model, "journeys-all.gpkg", layer="j2")
+    j2_model.to_parquet("journeys-all.parquet.gz", compression="gzip")
     ix = (j2_model[financial_year] > 0).any(axis=1)
-    write_dataframe(j2_model[ix], "journeys-all.gpkg", layer="j2_model")
+    j2_model[ix].to_file("journeys-all.gpkg", layer="j2_model", engine="pyogrio")
 
 
 def source_cs_path(source, odm_path, nx_list):
-    """get_source_cs_path3: get all shortest node path list if in node_list"""
+    """source_cs_path: get all shortest node path list if in node_list"""
     base_list = np.asarray(nx_list)
     # base_list = base_list[base_list >= source]
     data = np.asarray(base_list)
     ix = np.where(source == np.asarray(nx_list))[0][0]
     path = odm_path[ix][base_list]
+    # path = odm_path[base_list]
     mask = path == -9999
     while not mask.all():
         data = np.vstack([data, path])
@@ -515,6 +519,13 @@ def crs_model(source, ns):
     financial_year = ns.journey_model.columns
     crs = ns.node.loc[source, "CRS"]
     print(f"{crs.rjust(4)}{str(source).rjust(8)}\tpid {str(os.getpid()).rjust(8)}")
+    filepath = f"output/{crs}.parquet"
+    try:
+        r = pd.read_parquet(filepath)
+        return r[financial_year]
+    except (FileNotFoundError, ArrowInvalid):
+        pass
+    #ix = np.where(source == np.asarray(ns.nx_list))[0][0]
     r = source_cs_path(source, ns.nx_path, ns.nx_list)
     r["o_NLC"] = ns.node.loc[r["source"], "NLC"].values
     r["d_NLC"] = ns.node.loc[r["target"], "NLC"].values
@@ -528,22 +539,9 @@ def crs_model(source, ns):
     r.index = pd.MultiIndex.from_tuples(ix, names=["source", "target"])
     r = r[financial_year].groupby(level=[0, 1]).sum()
     # write_crs(crs, r, ns.journey, ns.node)
-    return source, r
-
-
-def write_crs(source, model, ns):
-    """write_crs:"""
-    crs = ns.node.loc[source, "CRS"]
-    financial_year = ns.journey_model.columns
     print(f"write {crs}\tpid {str(os.getpid()).rjust(8)}")
-    r = ns.journey.copy()
-    financial_year = get_financial_year(r.columns)
-    r[financial_year] = 0
-    ix = model.index.intersection(r.index)
-    r.loc[ix, financial_year] = model.loc[ix]
-    filepath = f"output/{crs}.gpkg"
-    r.loc[model.index].to_file(filepath, layer=crs, engine="pyogrio")
-    return model
+    r.to_parquet(filepath, compression="brotli")
+    return r
 
 
 def get_financial_year(columns):
@@ -567,8 +565,7 @@ def initialize_model(namespace):
     namespace.nx_list = nx_list
     namespace.node = node
     namespace.journey_model = journey_model
-    namespace.journey = journey
-    return nx_list, journey.copy()
+    return nx_list, journey.sort_index()
 
 
 def main():
@@ -580,13 +577,14 @@ def main():
     financial_year = get_financial_year(journey.columns)
     nthread = os.cpu_count() - 1
     chunksize = int(np.ceil(len(nx_list) / nthread))
-    get_crs_model = partial(crs_model, ns=ns)
-    write_model = partial(write_crs, ns=ns)
+    set_crs_model = partial(crs_model, ns=ns)
+    # write_model = partial(write_crs, ns=ns)
     with Pool(processes=nthread) as pool:
-        r = pool.imap_unordered(get_crs_model, nx_list, chunksize)
-        r = pool.starmap(write_model, r)
-        s = pd.concat(r).groupby(level=[0, 1]).sum()
-        journey.loc[s.index, financial_year] += s
+        r = pool.imap_unordered(set_crs_model, nx_list, chunksize)
+        s = pd.concat(r)[financial_year]
+    s = s.groupby(level=[0, 1]).sum()
+    ix = s.index.intersection(journey.index)
+    journey.loc[ix, financial_year] = s
     set_combined_data(journey, financial_year)
     print("finish model")
 
