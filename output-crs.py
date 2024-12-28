@@ -9,7 +9,6 @@ import geopandas as gp
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from pyogrio import read_dataframe, write_dataframe
 from pyogrio.errors import DataLayerError, DataSourceError
 from shapely import unary_union
 from shapely.geometry import Polygon
@@ -54,20 +53,18 @@ def get_linear_lw(line):
 
 def get_gb():
     """get_gb: subset of islands that make up mainland Britain"""
-    ine = read_dataframe("data/ine.gpkg", layer="base").to_crs(CRS)
+    ine = gp.read_file("data/ine.gpkg", layer="base", engine="pyogrio").to_crs(CRS)
     ix = (
         """1636,1394,1403,1383,1133,1142,1273,1089,1066,634,1035,1048,1165,1163"""
     ).split(",")
     ix = map(int, ix)
     mainland = ine.loc[ix]
-    write_dataframe(mainland, "data/ine.gpkg", layer="mainland")
+    mainland.to_file("data/ine.gpkg", layer="mainland", engine="pyogrio")
     beeching = mainland.buffer(9000.0)
     beeching = Polygon(unary_union(beeching))
     beeching = gp.GeoSeries(beeching, crs=CRS)
-    write_dataframe(
-        beeching.to_frame("geometry"), "work/beeching.gpkg", layer="beeching"
-    )
-    station = read_dataframe("work/odm-station.gpkg", layer="odm_station")
+    beeching.to_frame("geometry").to_file("work/beeching.gpkg", layer="beeching")
+    station = gp.read_file("work/odm-station.gpkg", layer="odm_station")
     beeching_label = (
         """Aberdeen,Barrow-In-Furness,Birmingham,Blackpool,Bournmouth,Brighton,Bristol,Cambridge,"""
         """Cardiff,Carlisle,Derby,Dover,Dundee,Edingburgh,Exeter,Glasgow,Gloucester,Grimsby,"""
@@ -98,14 +95,17 @@ def get_filepath(image, crs, year):
 
 def write_image(filename, image="image"):
     """write_image: output image file"""
-    crs = filename.replace(".gpkg", "")
+    if ".parquet" not in filename:
+        return
+    crs = filename.replace(".parquet", "")
     try:
-        gf = read_dataframe(f"output/{filename}", layer=crs)
+        df = pd.read_parquet(f"output/{filename}")
     except (DataSourceError, DataLayerError):
         print(f"ERROR: {crs}")
         return
-    financial_year = [i for i in gf.columns if i[:2] == "20"]
+    financial_year = [i for i in df.columns if i[:2] == "20"]
     print(crs)
+    gf = nx_model.copy()
     for year in financial_year:
         filepath = get_filepath(image, crs, year)
         if os.path.isfile(filepath):
@@ -118,10 +118,10 @@ def write_image(filename, image="image"):
         fig.patch.set_facecolor("#d4ebf2")
         mainland.plot(ax=ax, color="white")
         ax.axis("off")
-        if gf[year].sum() > 0.0:
-            gf["lw"] = get_linear_lw(gf[year])
-        else:
-            gf["lw"] = 0.0
+        gf["lw"] = 0.0
+        if df[year].sum() > 0.0:
+            gf["lw"] = get_linear_lw(df[year])
+        gf["lw"] = gf["lw"].fillna(0.0)
         ax.set_title(f"{crs} {year[:4]}-{year[6:]}", y=1.0, x=0.0, pad=-12, loc="left")
         gf.plot(ax=ax, linewidth=gf["lw"], color="orange")
         if ".png" in filepath:
@@ -133,16 +133,19 @@ def write_image(filename, image="image"):
 
 def main():
     """main: execution block"""
-    global mainland
-    mainland = read_dataframe("data/ine.gpkg", layer="mainland")
-    nthread = 4 * os.cpu_count() - 1
+    global mainland, nx_model
+    mainland = gp.read_file("data/ine.gpkg", layer="mainland")
+    nx_model = gp.read_file("work/odm-path.gpkg", layer="simple_edge")
+    nx_model = nx_model.set_index(["source", "target"]).sort_index()
+    nthread = 2 * os.cpu_count() - 1
     filelist = sorted(os.listdir("output"))
     chunksize = int(np.ceil(len(filelist) / nthread))
-    pool = Pool(processes=nthread)
-    output_image = partial(write_image)
-    r = pool.map(output_image, filelist, chunksize)
-    # output_image = partial(write_image, image="vector")
-    # r = pool.map(output_image, filelist, chunksize)
+    with Pool(processes=nthread) as pool:
+        r = pool.imap_unordered(write_image, filelist, chunksize)
+        _ = list(r)
+        # output_image = partial(write_image, image="vector")
+        # r = pool.imap_unordered(output_image, filelist, chunksize)
+        # _ = list(r)
 
 
 if __name__ == "__main__":
