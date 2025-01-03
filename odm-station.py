@@ -6,8 +6,6 @@ import re
 
 import geopandas as gp
 import pandas as pd
-from pyogrio import write_dataframe
-from pyogrio.errors import DataLayerError, DataSourceError
 
 # lookup = {
 #    "CLJ": ("CLPHMJ1", "CLPHMJ2", "CLPHMJC", "CLPHMJM", "CLPHMJW"),
@@ -22,8 +20,9 @@ from pyogrio.errors import DataLayerError, DataSourceError
 CRS = "EPSG:27700"
 pd.set_option("display.max_columns", None)
 
-OUTPATH = "work/odm-station.gpkg"
-OUTFILE = "work/odm-model.parquet.xz"
+OUTSTATION = "work/odm-station.parquet.gz"
+OUTNAPTAN = "work/odm-naptan.parquet.gz"
+OUTMODEL = "work/odm-model.parquet.gz"
 
 
 def get_naptan():
@@ -40,22 +39,23 @@ def get_naptan():
     return r
 
 
-def get_naptan_station():
+def get_naptan_station(cache=True):
     """get_naptan_station
     :param
        naptan
     """
-    try:
-        r = gp.read_file(OUTPATH, layer="naptan")
-        return r
-    except (DataSourceError, DataLayerError):
-        pass
+    if cache:
+        try:
+            r = gp.read_parquet(OUTNAPTAN)
+            return r
+        except FileNotFoundError:
+            pass
     naptan = get_naptan()
-    fields = (
+    field = (
         "ATCOCode,CommonName,LocalityName,ParentLocalityName,StopType,Status,geometry"
     ).split(",")
     r = naptan[naptan["StopType"].isin(["RLY", "MET"])]
-    r = r[fields].dropna(axis=1, how="all").fillna("-")
+    r = r[field].dropna(axis=1, how="all").fillna("-")
     r["TIPLOC"] = r["ATCOCode"].str[4:]
     r["Name"] = r["CommonName"].str.replace(" Rail Station", "")
     r["Name"] = r["Name"].str.replace(" Station", "")
@@ -91,7 +91,11 @@ def get_corpus_model():
     """get_corpus_model:"""
     with gzip.open("data/CORPUSExtract.json.gz", "r") as fin:
         data = json.load(fin)
-    return pd.json_normalize(data, "TIPLOCDATA").drop_duplicates()
+    r = pd.json_normalize(data, "TIPLOCDATA").drop_duplicates()
+    ix = r["NLC"] == 145700
+    if (r.loc[ix, "STANOX"].str.strip() == "").all():
+        r.loc[ix, "STANOX"] = "72269"
+    return r
 
 
 def read_odm_model(n=18):
@@ -197,9 +201,7 @@ def get_corpus_column(odm_model, corpus_model):
 def get_naptan_column(odm_model, naptan_station):
     """get_naptan_column: get NaPTAN value"""
     r = odm_model.copy().set_index("TIPLOC")
-    column = ("""CommonName,LocalityName,ParentLocalityName,StopType,Status""").split(
-        ","
-    )
+    column = "CommonName,LocalityName,ParentLocalityName,StopType,Status".split(",")
     r[column] = ""
     s = naptan_station.set_index("TIPLOC")
     ix = s.index.intersection(r.index)
@@ -227,11 +229,8 @@ def get_odm_station(naptan_station, corpus_model, orr_station, odm_model):
     r = get_naptan_column(r, naptan_station)
     r["Group"] = r["Group"].fillna("")
     ix = r["NLC"] == 690900
-    r.loc[ix, ["TIPLOC", "STANOX", "UIC"]] = [
-        "ANGELRD",
-        51924,
-        69090,
-    ]
+    column = ["TIPLOC", "STANOX", "UIC", "NLCDESC"]
+    r.loc[ix, column] = "ANGELRD,51924,69090,ANGEL ROAD".split(",")
     column = ["FinancialYear", "o_nlc", "journeys"]
     s = odm_model[column].rename(columns={"o_nlc": "NLC"})
     s = s.groupby(["NLC", "FinancialYear"]).sum().reset_index()
@@ -285,9 +284,11 @@ def main():
     odm_station = get_odm_station(naptan_station, corpus_model, orr_station, odm_model)
     odm_model = update_odm_model(odm_model, odm_station)
     odm_model = scrub_odm_model(odm_model)
-    write_dataframe(naptan_station, OUTPATH, layer="naptan")
-    write_dataframe(odm_station, OUTPATH, layer="odm_station")
-    odm_model.to_parquet(OUTFILE)
+    # write_dataframe(naptan_station, OUTPATH, layer="naptan")
+    # write_dataframe(odm_station, OUTPATH, layer="odm_station")
+    naptan_station.to_parquet(OUTNAPTAN, compression="gzip")
+    odm_station.to_parquet(OUTSTATION, compression="gzip")
+    odm_model.to_parquet(OUTMODEL, compression="gzip")
 
 
 if __name__ == "__main__":
