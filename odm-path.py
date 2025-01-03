@@ -41,8 +41,8 @@ OUTDISTANCE = "work/odm-distance.parquet.gz"
 
 def snap_point_line(point, line):
     """snap_point_line:"""
-    s = get_geometry_series(point)
-    m = get_geometry_series(line)
+    s = get_geo_series(point)
+    m = get_geo_series(line)
 
     i, j = m.sindex.nearest(s)
     p, _ = nearest_points(m.iloc[j].values, s.iloc[i].values)
@@ -50,8 +50,8 @@ def snap_point_line(point, line):
     return r.reset_index(drop=True)
 
 
-def get_geometry_series(gf):
-    """get_geometry_series: get "geometry" column as GeoSeries"""
+def get_geo_series(gf):
+    """get_geo_series: get "geometry" column as GeoSeries"""
     r = gf.copy()
     try:
         return r["geometry"].reset_index(drop=True)
@@ -117,6 +117,11 @@ def get_station_edge_node(nx_model, nx_station):
     return edge, node
 
 
+def get_np_geometry(v):
+    """get_np_geometry:"""
+    return np.fromiter(v.geoms, dtype=np.ndarray)
+
+
 def get_split(v, separation=1.0e-6):
     """
 
@@ -144,7 +149,7 @@ def merge_line(line, directed=False):
     return gp.GeoSeries(line_merge(MultiLineString(r.values), directed).geoms, crs=CRS)
 
 
-def split_network(network_model, point):
+def split_network2(network_model, point):
     """split_network:
 
     :param network_model:
@@ -152,7 +157,7 @@ def split_network(network_model, point):
 
     """
     # write_dataframe(r.to_frame("geometry"), "dump.gpkg", layer="snap_point")
-    m = get_geometry_series(network_model)
+    m = get_geo_series(network_model)
     m = merge_line(m)
     m = m.reset_index(name="geometry").rename(columns={"index": "line_id"})
     s = snap_point_line(point, m)
@@ -168,6 +173,33 @@ def split_network(network_model, point):
     r = pd.concat([r, m]).drop_duplicates(subset="line_id")
     r = r.explode("geometry")
     return gp.GeoDataFrame(r.reset_index(drop=True), crs=CRS)
+
+
+def split_network(nx_model, nx_point):
+    """split_network3: split a linear model at at a series of points
+
+    :param network_model:
+    :param point:
+
+    """
+    get_snap = partial(snap, tolerance=1.0e-6)
+    line = get_geo_series(nx_model).rename_axis("line_id").reset_index()
+    point = get_geo_series(nx_point)
+    i, j = line.sindex.nearest(point)
+    p, _ = nearest_points(line["geometry"].iloc[j].values, point.iloc[i].values)
+    p = np.unique(get_coordinates(p), axis=0)
+    p = gp.points_from_xy(*p.T)
+    i, j = line.sindex.query(p, predicate="dwithin", distance=0.1)
+    ix = np.unique(j)
+    s = pd.Series(p[i], index=j)
+    s = s.groupby(level=0).apply(np.asarray).map(MultiPoint)
+    r = starmap(get_snap, zip(line.loc[ix, "geometry"], s))
+    r = starmap(split, zip(r, s))
+    r = pd.Series(map(get_np_geometry, r), index=ix).to_frame("geometry")
+    r.insert(0, "line_id", r.index)
+    r = pd.concat([r, line.drop(ix)]).sort_index()
+    r = r.drop_duplicates(subset="line_id").explode("geometry")
+    return gp.GeoDataFrame(r, crs=CRS).reset_index(drop=True)
 
 
 # Ryde Pier Head-Portsmouth Harbour
@@ -223,7 +255,7 @@ def get_csr_array(edge):
 
 
 def set_simple_model(active_station, rhye_fix=True):
-    """set_simple_model: read centre-line track-model to LineString
+    """set_simple_model: read track-model and missing station or track
 
     :param rhye_fix: add a random Isle of Wight ferry path
 
@@ -369,6 +401,17 @@ def get_edge_list_path(edge, node):
     return nx_list, nx_path, d
 
 
+def get_edge_list_csr(edge, node):
+    """get_edge_node_segment:"""
+    column = ["source", "target"]
+    s = edge.set_index(column, drop=False)
+    edge_csr = get_csr_array(s)
+    n, node["connection"] = connected_components(edge_csr)
+    print(f"\t{n} component")
+    nx_list = node.loc[node["CRS"] != "", "node"].values
+    return nx_list, edge_csr
+
+
 def get_crs_edge_distance(d, node, nx_list):
     """get_crs_edge_distance:"""
     dmask = np.zeros(d.shape[1], dtype=bool)
@@ -389,14 +432,66 @@ def nx_chain_len(path, nx_list):
     return len(set(path).intersection(nx_list))
 
 
-def get_all_cs_segment(odm_path, nx_list):
+def nx_chain_len2(path, nx_list):
+    """nx_chain: get sorted list of nodes in path if in nx_list"""
+    if path is None:
+        return 0
+    return np.isin(path, nx_list).sum()
+    # return len(set(path).intersection(nx_list))
+
+
+# def get_all_cs_segment(odm_path, nx_list):
+#     """get_all_cs_segment: get all shortest node path lists"""
+#     data = []
+#     for i, j in enumerate(nx_list):
+#         if i % 64 == 0:
+#             print(str(i).rjust(8), str(j).rjust(8))
+#         ix = np.where(j == nx_list)[0][0]
+#         r = get_source_cs_segment(j, odm_path[ix], nx_list)
+#         if r.empty:
+#             continue
+#         data.append(r)
+#     r = pd.concat(data)
+#     get_nx_chain_len = partial(nx_chain_len, nx_list=nx_list)
+#     r["count"] = r.map(get_nx_chain_len)
+#     r = r[r["count"] == 2]
+#     r["source"] = r["path"].str[0]
+#     r["target"] = r["path"].str[-1]
+#     column = ["source", "target"]
+#     ix = r[column].apply(sorted, axis=1).map(tuple)
+#     r.index = pd.MultiIndex.from_tuples(ix, names=["source", "target"])
+#     return r
+
+
+def distance_csr(source, nx_csr, directed=False):
+    """distance_csr:"""
+    return shortest_path(csgraph=nx_csr, indices=source, directed=directed)
+
+
+def get_distance_csr(edge, node):
+    """get_distance_csr:"""
+    edge_list, edge_csr = get_edge_list_csr(edge, node)
+    get_distance = partial(distance_csr, nx_csr=edge_csr, directed=False)
+    return np.vstack(np.fromiter(map(get_distance, edge_list), dtype=np.ndarray))
+    return r[:, edge_list]
+
+
+def get_distance_csr2(nx_csr, nx_list):
+    """get_distance_csr:"""
+    get_distance = partial(distance_csr, nx_csr=nx_csr)
+    return np.vstack(np.fromiter(map(get_distance, nx_list), dtype=np.ndarray))
+
+
+def get_all_cs_segment(nx_list, nx_csr):
     """get_all_cs_segment: get all shortest node path lists"""
     data = []
     for i, j in enumerate(nx_list):
         if i % 64 == 0:
             print(str(i).rjust(8), str(j).rjust(8))
-        # ix = np.where(j == np.asarray(nx_list))[0][0]
-        r = get_source_cs_segment(j, odm_path, nx_list)
+        _, nx_path = shortest_path(
+            csgraph=nx_csr, indices=j, directed=False, return_predecessors=True
+        )
+        r = get_source_cs_segment(j, nx_path, nx_list)
         if r.empty:
             continue
         data.append(r)
@@ -417,8 +512,8 @@ def get_source_cs_segment(source, odm_path, nx_list):
     base_list = np.asarray(nx_list)
     base_list = base_list[base_list >= source]
     data = np.asarray(base_list)
-    ix = np.where(source == np.asarray(nx_list))[0][0]
-    path = odm_path[ix][base_list]
+    # ix = np.where(source == np.asarray(nx_list))[0][0]
+    path = odm_path[base_list]
     # path = odm_path[base_list]
     mask = path == -9999
     j = 0
@@ -430,7 +525,7 @@ def get_source_cs_segment(source, odm_path, nx_list):
         mask = path == -9999
         i = np.where(mask)[0]
         path[i] = i
-        path = odm_path[ix][path]
+        path = odm_path[path]
         # path = odm_path[path]
         path[i] = -9999
         j = j + 1
@@ -441,7 +536,7 @@ def get_source_cs_segment(source, odm_path, nx_list):
     return r
 
 
-def set_simple_node_edge(rail_model, active_station):
+def set_simple_node_edge(active_station):
     """set_simple_edge_node:"""
     try:
         node = gp.read_file(OUTPATH, layer="simple_node", engine="pyogrio")
@@ -451,8 +546,10 @@ def set_simple_node_edge(rail_model, active_station):
         pass
     rail_model, station_point = set_simple_model(active_station)
     edge, node = get_station_edge_node(rail_model, station_point)
-    edge_list, edge_path, _ = get_edge_list_path(edge, node)
-    edge_segment = get_all_cs_segment(edge_path, edge_list)
+    edge_list, edge_csr = get_edge_list_csr(edge, node)
+    # edge_segment = get_all_cs_segment(edge_path, edge_list)
+    # print(f"end {dt.datetime.now() - START}")
+    edge_segment = get_all_cs_segment(edge_list, edge_csr)
     # column = ["source", "target"]
     edge_model = get_nx_geometry(edge_segment["path"], edge, station_point)
     edge, node = get_station_edge_node(edge_model, station_point)
@@ -525,8 +622,77 @@ def crs_model(source, ns):
         return r[financial_year]
     except (FileNotFoundError, ArrowInvalid):
         pass
-    #ix = np.where(source == np.asarray(ns.nx_list))[0][0]
+    # ix = np.where(source == np.asarray(ns.nx_list))[0][0]
     r = source_cs_path(source, ns.nx_path, ns.nx_list)
+    r["o_NLC"] = ns.node.loc[r["source"], "NLC"].values
+    r["d_NLC"] = ns.node.loc[r["target"], "NLC"].values
+    r = r.set_index(["o_NLC", "d_NLC"])
+    r["path"] = r["path"].map(pairwise).map(list)
+    r[financial_year] = 0
+    ix = r.index.intersection(ns.journey_model.index)
+    r.loc[ix, financial_year] = ns.journey_model.loc[ix]
+    r = r.explode("path")
+    ix = r["path"].map(sorted).map(tuple)
+    r.index = pd.MultiIndex.from_tuples(ix, names=["source", "target"])
+    r = r[financial_year].groupby(level=[0, 1]).sum()
+    # write_crs(crs, r, ns.journey, ns.node)
+    print(f"write {crs}\tpid {str(os.getpid()).rjust(8)}")
+    r.to_parquet(filepath, compression="brotli")
+    return r
+
+
+def source_cs_path2(source, nx_csr, nx_list):
+    """source_cs_path: get all shortest node path list if in node_list"""
+    base_list = np.asarray(nx_list)
+    # base_list = base_list[base_list >= source]
+    data = np.asarray(base_list)
+    # ix = np.where(source == np.asarray(nx_list))[0][0]
+    # path = odm_path[ix][base_list]
+    # path = odm_path[base_list]
+    _, nx_path = shortest_path(
+        csgraph=nx_csr, indices=source, directed=False, return_predecessors=True
+    )
+    path = nx_path[base_list]
+    mask = path == -9999
+    while not mask.all():
+        data = np.vstack([data, path])
+        path[mask] = -9999
+        mask = path == -9999
+        i = np.where(mask)[0]
+        path[i] = i
+        # path = odm_path[ix][path]
+        path = nx_path[path]
+        path[i] = -9999
+    r = pd.Series([i[i != -9999][::-1] for i in data.T], index=base_list)
+    r = r.to_frame("path")
+    if r.empty:
+        r = pd.DataFrame([], columns=["path", "count", "source", "target"])
+        r.index = pd.MultiIndex.from_arrays([[]] * 2)
+        return r
+    get_nx_chain_len = partial(nx_chain_len, nx_list=nx_list)
+    r["count"] = r.map(get_nx_chain_len)
+    r = r[r["count"] > 1]
+    r["source"] = source
+    r["target"] = r["path"].str[-1]
+    column = ["source", "target"]
+    ix = r[column].apply(sorted, axis=1).map(tuple)
+    r.index = pd.MultiIndex.from_tuples(ix, names=["source", "target"])
+    return r.sort_index()
+
+
+def crs_model2(source, ns):
+    """crs_model": calculate shortest path segments and aggregated passenger flow"""
+    financial_year = ns.journey_model.columns
+    crs = ns.node.loc[source, "CRS"]
+    print(f"{crs.rjust(4)}{str(source).rjust(8)}\tpid {str(os.getpid()).rjust(8)}")
+    filepath = f"output/{crs}.parquet"
+    # try:
+    #     r = pd.read_parquet(filepath)
+    #     return r[financial_year]
+    # except (FileNotFoundError, ArrowInvalid):
+    #     pass
+    # ix = np.where(source == np.asarray(ns.nx_list))[0][0]
+    r = source_cs_path2(source, ns.nx_csr, ns.nx_list)
     r["o_NLC"] = ns.node.loc[r["source"], "NLC"].values
     r["d_NLC"] = ns.node.loc[r["target"], "NLC"].values
     r = r.set_index(["o_NLC", "d_NLC"])
@@ -554,14 +720,17 @@ def initialize_model(namespace):
     odm_model = get_odm_model()
     financial_year = get_financial_year(odm_model.columns)
     active_station = get_station()
-    node, edge = set_simple_node_edge(odm_model, active_station)
-    nx_list, nx_path, d = get_edge_list_path(edge, node)
+    node, edge = set_simple_node_edge(active_station)
+    # nx_list, nx_path, d = get_edge_list_path(edge, node)
+    nx_list, nx_csr = get_edge_list_csr(edge, node)
+    d = get_distance_csr2(nx_csr, nx_list)
     _ = set_distance_model(odm_model, nx_list, node, d)
     set_point_model(odm_model, node)
     journey = edge.set_index(["source", "target"]).copy()
     journey[financial_year] = 0
     journey_model = odm_model.set_index(["o_nlc", "d_nlc"])[financial_year]
-    namespace.nx_path = nx_path
+    # namespace.nx_path = nx_path
+    namespace.nx_csr = nx_csr
     namespace.nx_list = nx_list
     namespace.node = node
     namespace.journey_model = journey_model
@@ -577,7 +746,7 @@ def main():
     financial_year = get_financial_year(journey.columns)
     nthread = os.cpu_count() - 1
     chunksize = int(np.ceil(len(nx_list) / nthread))
-    set_crs_model = partial(crs_model, ns=ns)
+    set_crs_model = partial(crs_model2, ns=ns)
     # write_model = partial(write_crs, ns=ns)
     with Pool(processes=nthread) as pool:
         r = pool.imap_unordered(set_crs_model, nx_list, chunksize)
