@@ -5,7 +5,7 @@ Using the Office of Road and Rail (ORR) Financial Year 2018/19 to 2023/24 passen
 Individual animated station flows for the five financial-years and 2 587 stations on the mainline British rail network [here](station-update.md), now in a **one column** format.
 
 ## Notes
-This is an update following the additional publication of passenger flow data by the ORR. The original FY2021/22 [README](README-alt.md) and **one column** format view is [available here](stations-update.md). As well as an [OpenInnovations blog post](https://open-innovations.org/blog/2024-01-08-passenger-journeys-pictures-at-a-rail-transport-exhibition) and a Bloomberg article ["Nine Maps Show How Britain Is on the Move"](https://www.bloomberg.com/news/features/2024-02-08/british-rail-train-ticket-data-maps-show-how-a-nation-travels-before-hs2)
+This is an update following the additional publication of passenger flow data by the ORR. The original FY2021/22 [README](README-alt.md) and **one column** format view is [available here](station-update.md). As well as an [OpenInnovations blog post](https://open-innovations.org/blog/2024-01-08-passenger-journeys-pictures-at-a-rail-transport-exhibition) and a Bloomberg article ["Nine Maps Show How Britain Is on the Move"](https://www.bloomberg.com/news/features/2024-02-08/british-rail-train-ticket-data-maps-show-how-a-nation-travels-before-hs2)
 
 Station locations may change as they are now based on the ORR [Station Attributes for All-Mainline Stations](https://raildata.org.uk/dataProduct/P-f9c7e715-1367-47b0-aee3-38d73d2ebe04/dataFiles).
 
