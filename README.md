@@ -1,5 +1,5 @@
 # kingfisher
-Using the Office of Road and Rail (ORR) Financial Year 2018/19 to 2023/24 passenger travel data projected onto a shortest-path network using the centre-line track-model this project looks to create visualisation for passenger journey numbers for the active rail stations across the British rail network.
+Using the Office of Road and Rail (ORR) Financial Year 2018/19 to 2024/25 passenger travel data projected onto a shortest-path network using the centre-line track-model this project looks to create visualisation for passenger journey numbers for the active rail stations across the British rail network.
 
 ## Station Flow
 Individual animated station flows for the five financial-years and 2 587 stations on the mainline British rail network [here](station-update.md), now in a **one column** format.
@@ -14,6 +14,7 @@ Station locations may change as they are now based on the ORR [Station Attribute
 |![](base/j1-model-201819.png)|![](base/j1-model-201920.png)|
 |![](base/j1-model-202021.png)|![](base/j1-model-202122.png)|
 |![](base/j1-model-202223.png)|![](base/j1-model-202324.png)|
+|![](base/j1-model-202425.png)||
 
 ![](base/j1-model-animation.gif)
 
@@ -49,10 +50,10 @@ This takes quite a long time. On my old kit quite few hours to complete all the 
 * download additional data,
 * create a station location file `work/odm-station.gpkg`,
 * create a cache file `work/odm-path.gpkg` containing intermediate data layers,
-* create 2 857 `GeoPKG` files for each station on the mainland network in the `output` directory,
+* create 2 595 `parquet` files for each station on the mainland network in the `output` directory,
 * create a `journeys-all.gpkg` file with an aggregated total for all network segments in the model,
 * create 15 522 (6 x 2 587) `PNG` image files for each station in a heirachy of directories in the `image` directory
-* create 2 587 animated `GIF` image files for each station in a heirachy of directories in the `image` directory
+* create 2 593 animated `GIF` image files for each station in a heirachy of directories in the `image` directory
 * create a one-column `station.md` markdown file with a link to each image file
 
 ## Acknowledgment

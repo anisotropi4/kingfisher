@@ -108,7 +108,7 @@ def get_source_target(line):
 def get_station_edge_node(nx_model, nx_station):
     """get_station_edge_node: get aggregated node, edge network for network split at rail_station"""
     node, edge = get_source_target(nx_model["geometry"].reset_index(drop=True))
-    node[["CRS", "NLC"]] = "", 0
+    node[["CRS", "NLC"]] = "", ""
     i, j = node.sindex.nearest(nx_station["geometry"])
     node.iloc[j, -2:] = nx_station.iloc[i][["CRS", "NLC"]]
     edge["length"] = edge.length
@@ -224,8 +224,8 @@ def set_simple_model(active_station, rhye_fix=True):
 
     """
     try:
-        r = gp.read_file(OUTPATH, layer="simple-model", engine="pyogrio")
-        s = gp.read_file(OUTPATH, layer="rail-station", engine="pyogrio")
+        r = gp.read_file(OUTPATH, layer="simple-model")
+        s = gp.read_file(OUTPATH, layer="rail-station")
         return r, s
     except (DataSourceError, DataLayerError):
         try:
@@ -287,7 +287,7 @@ def set_distance_model(odm_model, nx_list, node, d):
 
     """
     column = (
-        """o_CRS,d_CRS,20182019,20192020,20202021,20212022,20222023,20232024,"""
+        """o_CRS,d_CRS,20182019,20192020,20202021,20212022,20222023,20232024,20242025,"""
         """o_name,o_region,d_name,d_region,o_nlc,d_nlc,crow-km,distance-km"""
     ).split(",")
     try:
@@ -295,7 +295,7 @@ def set_distance_model(odm_model, nx_list, node, d):
         r = r.set_index(["o_CRS", "d_CRS"], drop=False)
     except FileNotFoundError:
         r = odm_model.set_index(["o_CRS", "d_CRS"], drop=False)
-        r["crow-km"] = get_crow_distance(r, node)
+        r["crow-km"] = get_crow_distance(r, node.iloc[nx_list])
         s = get_crs_edge_distance(d, node, nx_list)
         r["distance-km"] = s.loc[r.index] / 1.0e3
         r[column].to_parquet(OUTDISTANCE, compression="gzip")
@@ -306,7 +306,7 @@ def set_point_model(odm_model, node):
     """set_point_model:"""
     column = (
         """node,length,source_CRS,source_NLC,geometry,20182019,20192020,20202021,20212022,"""
-        """20222023,20232024"""
+        """20222023,20232024,20242025"""
     ).split(",")
     r = odm_model[odm_model["o_CRS"] == odm_model["d_CRS"]].copy()
     node_map = node.set_index("CRS")[["node", "geometry"]]

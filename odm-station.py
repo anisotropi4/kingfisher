@@ -4,6 +4,8 @@ import gzip
 import json
 import re
 
+from difflib import SequenceMatcher
+
 import geopandas as gp
 import pandas as pd
 
@@ -80,10 +82,13 @@ def get_attribute_model():
         "National Location Code": "NLC",
         "Three Letter Code": "CRS",
         "Network Rail Region": "Region",
+        "Network Rail region": "Region",
     }
-    r = gp.GeoDataFrame(data=df[column.keys()], geometry=points, crs=CRS)
-    r = r.rename(columns=column)
+    df = df.rename(columns=column)
+    column = list(set(column.values()))
+    r = gp.GeoDataFrame(data=df[column], geometry=points, crs=CRS)
     r["NLC"] = r["NLC"] * 100
+    r["NLC"] = r["NLC"].astype(str).str.zfill(6)
     return r.set_index("NLC", drop=False)
 
 
@@ -95,6 +100,7 @@ def get_corpus_model():
     ix = r["NLC"] == 145700
     if (r.loc[ix, "STANOX"].str.strip() == "").all():
         r.loc[ix, "STANOX"] = "72269"
+    r["NLC"] = r["NLC"].astype(str).str.zfill(6)
     return r
 
 
@@ -116,9 +122,17 @@ def read_odm_model(n=18):
         """destination_region,d_region,destination_tlc,d_CRS,journeys,journeys"""
     ).split(",")
     column = dict(zip(column[::2], column[1::2]))
-    r = pd.read_csv(f"data/{filename}", low_memory=False).rename(columns=column)
-    r[["o_nlc", "d_nlc"]] = r[["o_nlc", "d_nlc"]] * 100
+    r = pd.read_csv(f"data/{filename}", low_memory=False)
+    r = r.rename(columns=column)
+    column = ["o_nlc", "d_nlc"]
+    r[column] = r[column] * 100
+    r[column] = r[column].apply(lambda v: v.astype(str).str.zfill(6))
     return r
+
+
+def get_str_ratio(v):
+    """get_str_ratio:"""
+    return SequenceMatcher(None, v.iloc[0], v["key"]).ratio()
 
 
 def get_missing(name, df, column):
@@ -139,13 +153,17 @@ def get_missing(name, df, column):
             data.append(r[ix])
         else:
             data.append(r)
-    return pd.concat(data).set_index("index")
+    s = pd.concat(data).set_index("index")
+    s["#"] = s[[column, "key"]].apply(get_str_ratio, axis=1)
+    s = s.sort_values("#")
+    s = s.drop_duplicates(subset="key", keep="last")
+    return s.sort_index()
 
 
 def get_odm_model():
     """get_odm_model: combine all ODM data for years 2018-2023"""
     data = []
-    for year in range(18, 24):
+    for year in range(18, 25):
         data.append(read_odm_model(year))
     r = pd.concat(data).reset_index(drop=True)
     r["FinancialYear"] = r["FinancialYear"].replace(1920, 20192020)
@@ -168,7 +186,7 @@ def get_base_odm_station(odm_model):
 
 def get_missing_crs(odm_station, corpus):
     """fix_missing_crs: fix missing CRS values"""
-    crs_lookup = {690900: "AGR"}
+    crs_lookup = {"690900": "AGR"}
     r = odm_station.copy()
     missing = r[r["CRS"].isna()]
     missing = get_missing(missing["Name"], corpus, "NLCDESC")
@@ -182,9 +200,11 @@ def get_missing_geometry(odm_model, naptan_station):
     """get_missing_geometry: match NaPTAN"""
     r = odm_model.copy()
     ix = r.loc[:, "geometry"].isna()
+    ix = ix[ix].index
     missing = r.loc[ix, "Name"]
     s = get_missing(missing, naptan_station, "Name")
-    r.loc[ix, "geometry"] = s["geometry"]
+    ix = ix.intersection(s.index)
+    r.loc[ix, "geometry"] = s["geometry"].values
     return r
 
 
@@ -228,7 +248,7 @@ def get_odm_station(naptan_station, corpus_model, orr_station, odm_model):
     r = get_corpus_column(r, corpus_model)
     r = get_naptan_column(r, naptan_station)
     r["Group"] = r["Group"].fillna("")
-    ix = r["NLC"] == 690900
+    ix = r["NLC"] == "690900"
     column = ["TIPLOC", "STANOX", "UIC", "NLCDESC"]
     r.loc[ix, column] = "ANGELRD,51924,69090,ANGEL ROAD".split(",")
     column = ["FinancialYear", "o_nlc", "journeys"]
@@ -275,12 +295,33 @@ def scrub_odm_model(odm_model):
     return r
 
 
+def get_orr_location():
+    """get_orr_location"""
+    filepath = "data/Table 6329 - Station Attributes For All Mainline Stations.ods"
+    r = pd.read_excel(
+        filepath, dtype="string", sheet_name=1, skiprows=3, na_filter=False
+    )
+    r.columns = r.columns.str.replace("\n", "").str.replace(" [r]", "")
+    column = ["Ordnance Survey grid: Easting", "Ordnance Survey grid: Northing"]
+    r[column] = r[column].astype("float")
+    p = gp.GeoSeries.from_xy(*r[column].values.T, crs=CRS)
+    column = {
+        "Station name": "Name",
+        "National Location Code": "NLC",
+        "Three Letter Code": "CRS",
+        "Network Rail Region": "Rail Region",
+    }
+    r = r.rename(columns=column)
+    r["NLC"] = r["NLC"] + "00"
+    return gp.GeoDataFrame(data=r[column.values()], geometry=p)
+
+
 def main():
     """main: script execution point"""
+    odm_model = get_odm_model()
     naptan_station = get_naptan_station().reset_index(drop=True)
     corpus_model = get_corpus_model()
     orr_station = get_attribute_model()
-    odm_model = get_odm_model()
     odm_station = get_odm_station(naptan_station, corpus_model, orr_station, odm_model)
     odm_model = update_odm_model(odm_model, odm_station)
     odm_model = scrub_odm_model(odm_model)
@@ -293,3 +334,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    
