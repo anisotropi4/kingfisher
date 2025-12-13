@@ -113,6 +113,7 @@ def write_image(filename, image="image"):
             continue
         if (gf.type != "LineString").all():
             continue
+        print(f"{crs} {year} write")
         fig, ax = plt.subplots(dpi=300.0, layout="constrained")
         fig.set_figheight(8.0)
         fig.patch.set_facecolor("#d4ebf2")
@@ -137,7 +138,7 @@ def main():
     mainland = gp.read_file("data/ine.gpkg", layer="mainland")
     nx_model = gp.read_file("work/odm-path.gpkg", layer="simple_edge")
     nx_model = nx_model.set_index(["source", "target"]).sort_index()
-    nthread = 2 * os.cpu_count() - 1
+    nthread = os.cpu_count() - 1
     filelist = sorted(os.listdir("output"))
     chunksize = int(np.ceil(len(filelist) / nthread))
     with Pool(processes=nthread) as pool:
